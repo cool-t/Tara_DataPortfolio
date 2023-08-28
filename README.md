@@ -1,1 +1,3 @@
-# Tara_DataPortfolio
+# **Tara Cool - Data Portfolio**
+
+# *Welcome to my Data Science Portfolio! I'm a recent graduate with an MS in Applied Business Analytics from Boston University Metropolitan College. With a passion for leveraging data to drive business insights, I specialize in Python, R, SQL, Tableau, and MS Power BI. Through my coursework and projects, I've developed the ability to think critically about data problems and apply appropriate analytical methods. I invite you to explore my portfolio, where you'll find projects showcasing my skills in data manipulation, statistical modeling, and data visualization. I'm dedicated to delivering impactful insights and improving business outcomes. Feel free to reach out to me for inquiries or collaboration opportunities. Thank you for visiting!*
