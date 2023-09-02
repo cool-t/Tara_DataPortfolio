@@ -1,0 +1,27 @@
+Amenity,Level,"Estimated Incremental Cost,
+Per Visitor/Per Night"
+WiFi_Network,Basic,11.75
+WiFi_Network,Strong,16.25
+WiFi_Network,Best in Class,19.15
+breakfast,None,0
+breakfast,Continental,13.25
+breakfast,Full Buffet,22.45
+parking,Valet,60
+parking,Open Lot,15
+gym,None,0
+gym,Basic,10
+gym,Advanced,35
+gym,Super,65
+flex_check,No,0
+flex_check,Yes,12
+shuttle_bus,No,0
+shuttle_bus,Yes,75
+air_pure,No,0
+air_pure,Yes,12.85
+jacuzzi,No,0
+jacuzzi,Yes,40
+VIP_shop,No,0
+VIP_shop,Yes,12
+pool temp,76,15
+pool temp,80,35
+pool temp,84,45
