@@ -1,23 +1,46 @@
-# **Description of Text File Analyzer Program**
+# Text File Analyzer
 
-The “Text File Analyzer” Python program is designed to interact with users through the command line, allowing them to analyze a text file using a user-defined class called 'TextAnalyzer'. The main program imports this class from the ‘text_analyzer.py’ module and provides a variety of analysis options for the input text file. Notably, the core objective of the program is to enable users to gain insights into the content of a given text file – identifying frequent words, searching for specific terms, and/or obtaining summary statistics about the text.
+The **Text File Analyzer** is a Python command-line program that enables users to analyze text files using a custom `TextAnalyzer` class. It offers three key functions:
 
-To start, the main program (i.e., ‘tcool_main_program.py’) imports the 'TextAnalyzer' class from the 'text_analyzer' module. This class plays a crucial role in terms of encapsulating the various functionalities required for the three text analysis tasks in the main program. Additionally, the main program defines the ‘frequent_words()' function, which takes a dictionary of unique word frequencies and an optional parameter 'n' to specify the number of most frequent words to retrieve. The function returns a list of tuples containing the most frequent words along with their counts and a formatted result string. This function is essential for displaying the most frequent words later in the program.
+- Search for the frequency of a specific term  
+- Perform word frequency analysis (top N words or all)  
+- Generate summary statistics (sentence, word, character counts, plus top 10 frequent words)  
 
-Subsequently, the program enters a continuous loop where it prompts the user to input the name of a text file for analysis. To handle cases where a file does not exist, the program incorporates error handling by catching 'FileNotFoundError' exceptions. If the file exists, an instance of the 'TextAnalyzer' class is created using the provided file name. The program then provides three main options for analysis:
+The program prompts users for input, handles file errors gracefully, and provides valuable insights useful for content analysis, research, or text exploration. The `TextAnalyzer` class encapsulates the core text-processing logic, including file reading, counting sentences, words, characters, and word frequencies. It also includes helpful string representations and comparison methods. Unit tests ensure the accuracy and reliability of key functions.
 
-1. Search for a Term: The user can input a search term, and the program will display the frequency of that term in the text file. For example, if the user is interested in finding out how many times a particular term appears in the text, they can choose this option.
-2. Perform Word Frequency Analysis: This option computes and displays the frequency of each unique word in the text file. The user can specify the number of top words to analyze or override this option by pressing ‘Enter.’ For instance, they can choose to retrieve the 10 most frequently occurring words in the text file, or press ‘Enter’ to retrieve the frequency for all unique words in the text file.
-3. Generate Summary Statistics: This option provides an overview of the text file's characteristics, including the total number of sentences, characters, and words. It also displays the 10 most frequent words in the file.
+---
 
-Once the output of the selected text analysis task is returned to the user, they are given the choice to enter another text file for analysis, or to quit the program by typing ‘exit.’
+## Project Goal
 
-It is important to note that the 'TextAnalyzer' class handles the analysis of the text file by encapsulating methods to read the file, format its content, count sentences, characters, and words, and to determine the frequency of unique words. The class also provides methods for accessing computed summary statistics (i.e., where private attributes are used). It incorporates magic methods for comparing sentence counts between two 'TextAnalyzer' objects and generating easily understandable string representations of analysis results. The program for the 'TextAnalyzer' class (i.e., 'text_analyzer.py') concludes with unit tests that validate the accuracy and functionality of some of the public class methods within the 'TextAnalyzer' class.
+Provide a user-friendly tool to interactively analyze text files via the command line, extracting insights such as:
 
-Overall, the Text File Analyzer Python program aims to provide a user-friendly interface, doubling as a versatile tool for efficiently analyzing the content in a text file. Users can gain insights into the provided text file by pinpointing frequently occurring words via word frequency analysis; and obtaining important summary statistics. The insights can be useful for various purposes such as content analysis, research, and data-driven decision-making. Ultimately, this program streamlines and automates the process of extracting valuable information from text files and presents it in an organized and meaningful manner.
+- Frequency of specific search terms  
+- Most frequent words in the text  
+- Summary statistics including sentence, word, and character counts  
 
+This can support content analysis, research, or data-driven decision-making involving textual data.
 
-# **Instructions for Running the Text File Analyzer Program in Python**
+---
+
+## Tools Used
+
+- Python 3  
+- Custom `TextAnalyzer` class encapsulates core text processing and analysis methods  
+- Command-line interface for interactive user input and output  
+- Unit tests included for validating key class functionalities  
+
+---
+
+## Key Features & Insights
+
+- Encapsulation of text analysis logic within a reusable Python class  
+- Magic methods to compare text files and represent analysis results clearly  
+- Handles errors gracefully to improve user experience  
+- Summary statistics give a quick, useful snapshot of text content  
+
+---
+
+## Instructions for Running the Text File Analyzer Program in Python
 
 1. Prepare a Text File: Make sure you have a text file with content you want to analyze. You can create a simple text file and save it with a `.txt` extension. If you plan on using the provided input file, please continue to the next step.
 
@@ -36,10 +59,10 @@ Overall, the Text File Analyzer Python program aims to provide a user-friendly i
         b. Perform word frequency analysis - Specify the number of top words to analyze.
        
         c. Generate summary statistics - Obtain statistics about the text file.
+   
+      Enter the number corresponding to the option you want to choose, and press Enter.
 
-    	Enter the number corresponding to the option you want to choose, and press Enter.
+7. View Results: Depending on the options you choose, the program will display the requested information about the text file, such as word frequencies, sentence count, character count, etc.
 
-6. View Results: Depending on the options you choose, the program will display the requested information about the text file, such as word frequencies, sentence count, character count, etc.
-
-7. Exit Program or Enter Another File: After performing the desired text analysis task, the program will prompt the user to enter another file. If the user does not want to analyze another file/would like to exit the program – type ‘exit.’
+8. Exit Program or Enter Another File: After performing the desired text analysis task, the program will prompt the user to enter another file. If the user does not want to analyze another file/would like to exit the program – type ‘exit.’
 
