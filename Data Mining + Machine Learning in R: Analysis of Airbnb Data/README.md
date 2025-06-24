@@ -131,7 +131,7 @@ This includes:
   - High performance for “Pricey Digs”
   - Room type and size major influencers
 
-### c. Classification Tree - Cancellation Policy
+### c. Classification Tree - *Cancellation Policy*
 - Target: `cancellation_policy` (flexible, moderate, strict)
 - Key predictors: `log_price`, `number_of_reviews`
 - Implications:
