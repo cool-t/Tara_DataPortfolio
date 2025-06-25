@@ -1,9 +1,14 @@
 # NYC Airbnb Data Mining Project
+
+**View the full project write-up here:** [Full Report on RPubs](http://rpubs.com/tcool/data-mining-airbnb)
+
+---
+
 New York City’s Airbnb market is one of the most active and varied short-term rental ecosystems in the world - shaped by neighborhood trends, pricing dynamics, and host behaviors. This data mining project explores that complexity using predictive modeling, classification, clustering, and visualization to uncover patterns that can guide hosts, guests, investors, and policymakers.
 
 The analysis leverages real-world Airbnb data to uncover drivers of rental price variation, reveal booking behavior trends, and compare neighborhoods across the city – especially within Brooklyn. Through a mix of data wrangling, machine learning, and statistical analysis in R, this project delivers actionable insights and highlights opportunities for smarter, data-informed decision-making in the short-term rental space.
 
-**Data Source:** [Inside Airbnb](http://insideairbnb.com/get-the-data.html)  
+**Data Source:** [Inside Airbnb](http://insideairbnb.com/get-the-data.html) 
 
 ---
 
