@@ -1,0 +1,1422 @@
+---
+title: '**Data Mining Project: Analysis of Airbnb Rentals in NYC**'
+author: "Tara Cool"
+output: html_document
+---
+
+
+New York City’s Airbnb market is one of the most active and varied short-term rental ecosystems in the world – shaped by neighborhood trends, pricing dynamics, and host behaviors. This data mining project explores that complexity using predictive modeling, classification, clustering, and visualization to uncover patterns that can guide hosts, guests, investors, and policymakers.
+
+The analysis leverages real-world Airbnb data to uncover drivers of rental price variation, reveal booking behavior trends, and compare neighborhoods across the city – especially within Brooklyn. Through a mix of data wrangling, machine learning, and statistical analysis in R, this project delivers actionable insights and highlights opportunities for smarter, data-informed decision-making in the short-term rental space.
+
+```{r}
+# Load required packages
+## Data preparation
+library(scales)
+library(data.table)
+library(dplyr)
+library(forcats)
+
+## EDA
+library(ggplot2)
+library(ggcorrplot)
+
+## Regression
+library(forecast)
+library(ggcorrplot)
+
+## Classification
+library(caret)
+library(class)
+library(e1071)
+library(rpart)
+library(rpart.plot)
+
+## Clustering
+library(dplyr)
+library(ggplot2)
+library(factoextra)
+```
+
+```{r}
+# Read data into local environment
+df <- read.csv("train.csv")
+```
+
+
+# **1. Data Preparation**
+
+## Data Preprocessing
+
+Before any predictive modeling, the data is preprocessed to ensure quality, completeness, and contextual richness in the Airbnb rental dataset for New York City.
+
+```{r}
+# Subset data frame to include only those records pertaining to NYC
+ny.df <- df[df$city == "NYC", ]
+```
+
+
+### a. Dealing with Missing Values
+
+```{r}
+# Convert blank cells to 'NA's
+ny.df[ny.df == ""] <- NA
+
+# Calculate number of 'NA' values in data frame
+sum(is.na(ny.df))  
+```
+
+
+```{r}
+# Get percentage of rows that are "complete cases" (i.e., not missing values) 
+percent(sum(complete.cases(ny.df))/nrow(ny.df), accuracy = 0.01)
+```
+
+
+Next, we will evaluate count/proportion of ‘NA’ values corresponding to each variable to **understand the potential impact of dropping/imputing these missing values**. These insights will guide our process in deciding how we will handle NA values (i.e., drop or impute) for each data mining task (e.g., prediction, classification, & clustering).
+```{r}
+# Subset columns that contain "NA" values & get count of NA values in each column 
+num_NAs <- colSums(is.na(ny.df))  
+
+# Compute percent of NA values in each column
+prop_NAs <- percent(num_NAs/nrow(ny.df), accuracy = 0.01)  
+
+# Create df to store missing value counts for each variable
+var_NAs.df <- data.frame(num_NAs, prop_NAs)
+
+# Convert to table
+var_NAs <- data.table(var_NAs.df, keep.rownames = TRUE) 
+colnames(var_NAs) <- c("Variable", "Num. of NAs", "% NAs")
+
+var_NAs  # print table
+```
+
+```{r}
+# Handle missing values for numerical variables by imputing with median
+
+# Convert 'host_response_rate' from character value to numerical
+ny.df$host_response_rate <- as.numeric(sub("%", " ", ny.df$host_response_rate))
+
+# Impute for missing values with median
+ny.df$bathrooms[is.na(ny.df$bathrooms)] <- median(ny.df$bathrooms, na.rm = TRUE)
+ny.df$host_response_rate[is.na(ny.df$host_response_rate)] <- median(ny.df$host_response_rate, na.rm = TRUE)
+ny.df$review_scores_rating[is.na(ny.df$review_scores_rating)] <- median(ny.df$review_scores_rating, na.rm = TRUE)
+ny.df$bedrooms[is.na(ny.df$bedrooms)] <- median(ny.df$bedrooms, na.rm = TRUE)
+ny.df$beds[is.na(ny.df$beds)] <- median(ny.df$beds, na.rm = TRUE)
+```
+
+**Note**: The decision to impute missing values for numerical variables, such as 'host_response_rate,' 'bathrooms,' 'review_scores_rating,' 'bedrooms,' and 'beds,' with their respective medians serves the purpose of preserving the data's central tendencies while reducing the potential impact of outliers.
+
+```{r}
+# Drop NA values for categorical variables that were not imputed
+ny.df <- na.omit(ny.df)
+```
+
+
+### b. Data Cleaning
+
+```{r}
+# Subset values not equal to 0, as 0 is unrealistic for many numeric variables
+ny.df <- ny.df %>% filter(log_price > 0)
+ny.df <- ny.df %>% filter(accommodates > 0)
+ny.df <- ny.df %>% filter(bathrooms > 0)
+ny.df <- ny.df %>% filter(number_of_reviews > 0)
+ny.df <- ny.df %>% filter(review_scores_rating > 0)
+ny.df <- ny.df %>% filter(bedrooms > 0)
+```
+
+
+```{r}
+# Convert 'host_response_rate' & 'review_scores_rating' to decimal values that denote percentages
+ny.df$host_response_rate <- round((ny.df$host_response_rate)/100, 2)
+ny.df$review_scores_rating <- round((ny.df$review_scores_rating)/100, 2)
+```
+
+
+```{r}
+# Subset of valid 'zipcode' values
+# all valid zipcodes include 5 digits
+valid_zipcode <- nchar(ny.df$zipcode) == 5
+
+# Filter dataframe to keep only those rows with valid zipcodes
+ny.df <- ny.df[valid_zipcode, ]
+```
+
+
+```{r}
+# Convert 't'/'f' to 'True'/'False'
+ny.df$host_identity_verified <- factor(ny.df$host_identity_verified, levels = c("t", "f"), labels = c("True", "False"))
+ny.df$instant_bookable <- factor(ny.df$instant_bookable, levels = c("t", "f"), labels = c("True", "False"))
+```
+
+
+***
+### Summary of Data Preprocessing Steps
+- Focused on NYC listings by filtering to New York City entries.
+- Addressed missing values by:
+  - Quantifying NAs across variables
+  - Imputing numeric features (e.g., `bathrooms`, `beds`, 
+  `review_scores_rating`) using the median
+  - Dropping incomplete or unrealistic observations (e.g., zero bedrooms, zero reviews)
+- Converted percentage fields to decimals (e.g., `host_response_rate`)
+- Standardized categorical values (e.g., Boolean labels, validated zip codes)
+- Removed noisy levels (e.g., `bed_type`, rare `cancellation_policy` categories)
+***
+
+
+## Feature Engineering
+
+Simplify categorical variables:
+
+```{r}
+# Group less common levels of 'bed_type' into a single column called 'Other' 
+# (keep only the most frequently occurring type of bed)
+ny.df$bed_type <- fct_lump(ny.df$bed_type, 1)
+
+# Combine levels 'super_strict_30' & 'super_strict_60' from the variable 'cancellation_policy' 
+# & create new category 'super_strict'
+ny.df$cancellation_policy <- fct_other(ny.df$cancellation_policy, keep = c("flexible", "moderate", "strict"),
+                                       other_level = "super_strict")
+```
+
+
+Define new variable 'borough':
+```{r}
+# Import dataset for mapping zipcodes to boroughs
+borough_df <- read.csv("nyc_zip_borough_neighborhoods_pop.csv")
+
+# Inspect dataset
+str(borough_df)
+```
+**Note**: The dataset with information about the zipcode to borough mappings was downloaded/imported from the link below ...
+[Zipcode to NYC Borough Mappings Dataset](https://data.beta.nyc/dataset/pediacities-nyc-neighborhoods/resource/7caac650-d082-4aea-9f9b-3681d568e8a5)
+
+
+```{r}
+# Subset necessary variables
+borough_zip_df <- borough_df[, c("zip", "borough")]
+
+# Convert 'zip' to character type
+borough_zip_df$zip <- as.character(borough_zip_df$zip)
+
+# Merge new dataset with Airbnb dataframe based on 'zipcode' variable
+ny.df <- merge(ny.df, borough_zip_df, by.x = "zipcode", by.y = "zip", all.x = TRUE)
+
+# Replace missing 'borough' values with "Other"
+ny.df$borough[is.na(ny.df$borough)] <- "Other"
+
+# Drop 'zipcode' from dataset
+ny.df <- subset(ny.df, select = -c(zipcode))
+```
+
+**Note**: The 'zipcode' variable was dropped to avoid redundancy and potential confusion, as its numeric but categorical in nature. The location of a listing is better represented by variables like 'borough' and 'neighborhood'.
+
+
+Define new variables 'amenities_list' & 'amenities_count':
+```{r}
+# Define list of amenities & count of amenities for each listing
+ny.df <- ny.df %>%
+  mutate(amenities_list = strsplit(amenities, ",")) %>%
+  mutate(amenities_count = lengths(amenities_list))
+
+# Drop now redundant 'amenities_list' variable
+ny.df <- subset(ny.df, select = -c(amenities_list))
+```
+
+
+***
+### Summary of Feature Engineering
+- Mapped NYC zip codes to boroughs using an external dataset to enrich geographic analysis.  
+- Generated a new feature, amenities_count, by parsing the amenities list for each listing.  
+- Created a simplified property_group variable to reduce dimensionality and improve interpretability in visual and predictive models.
+***
+
+
+
+## **2. Exploratory Data Analysis (EDA)**
+## a. Summary Statistics
+
+```{r}
+# Drop NA values for categorical variables that were not imputed
+ny.df <- na.omit(ny.df)
+```
+
+
+Identify numeric & categorical variables:
+```{r}
+# Subset numeric columns
+num_var <- ny.df[, sapply(ny.df, is.numeric)]
+
+# Subset remaining (categorical) columns
+cat_var <- ny.df[, !(names(ny.df) %in% names(num_var))]
+```
+
+
+```{r}
+# Drop unique identifier columns from subsets
+num_var <- subset(num_var, select = -c(id))
+cat_var <- subset(cat_var, select = -c(description, name, thumbnail_url))
+```
+
+```{r}
+# Get summary stats for numerical variables
+summary(num_var)
+```
+
+
+```{r}
+# Standard deviation of each variable to better understand its overall distribution
+options(scipen = 999)
+col.sd <- apply(num_var, 2, sd)
+col.sd  # print 'sd' object (vector of sd values for each column)
+```
+
+
+```{r}
+# Interquartile range for numerical variables
+col.iqr <- apply(num_var, 2, IQR)
+col.iqr
+```
+
+
+```{r}
+# Variance of numerical variables
+col.var <- apply(num_var, 2, var)
+col.var
+```
+
+
+```{r}
+# Create correlation matrix
+corr <- round(cor(num_var), 2)
+corr
+```
+
+
+```{r}
+# Summarize ordinal categorical variables 
+
+# generate the total number of observations belonging to each level
+ordinal.cat.sum <- table(cat_var$cancellation_policy)
+ordinal.cat.sum
+```
+
+
+```{r}
+# Summarize nominal/binary nominal categorical variables 
+
+# generate the total number of observations belonging to each class
+nominal.cat.sum <- apply(subset(cat_var, select = - c(cancellation_policy, first_review, last_review, host_since, 
+                                                      amenities)), 2, table)
+nominal.cat.sum
+```
+
+**Note**: Some of the variables were removed here. For example, 'cancellation_policy' was excluded as it is an ordinal variable. Other variables such as 'first_review' and 'host_since' were removed due to the number of unique date values given for each of these variables. 
+
+
+***
+### Recap of Summary Statistics
+Conducted statistical profiling for all numeric and categorical features:  
+- Examined means, medians, variances, standard deviations, and IQRs to  understand distribution and skew.   
+- Created a correlation matrix to identify relationships between features (e.g., strong positive correlation between accommodates, beds, and log_price).
+
+These metrics provide valuable insight into Airbnb's market structure, guiding modeling choices and stakeholder recommendations.
+***
+
+
+Let's delve deeper into how this information can be used by both Airbnb users and management:
+
+**1. Pricing Insights:**
+
+  - *Average and Standard Deviation of Price*: By analyzing the average and standard deviation of prices, Airbnb users can get a sense of the typical price range for listings in New York City. Additionally, breaking down these statistics by room type (e.g., entire home, private room, shared room) allows users to understand which types of accommodations are more budget-friendly or luxurious.
+
+**2. Accommodation Preferences:**
+
+  - *Median Number of Bedrooms*: For travelers looking for more space, knowing the median number of bedrooms can help them identify listings that meet their requirements. On the management side, this information can guide property investments and renovations, ensuring that accommodations match market demand.
+
+**3. Correlation Insights:**
+
+  - *Positive Correlations*: Understanding strong positive correlations, such as between 'log_price' and 'accommodates,' can be valuable for Airbnb users. It suggests that as the number of people a property accommodates increases, so does the price. This information helps users make informed decisions when selecting properties based on their group size.
+  - *Variable Reduction*: For Airbnb management, identifying correlated variables can aid in variable reduction for predictive modeling. By eliminating highly correlated predictors, they can build more efficient and interpretable models.
+
+**4. Categorical Variables:**
+
+  - *Categorization of Listings*: The summary of categorical variables, like 'property_type,' 'room_type,' and 'neighborhood,' provides insights into the diversity of Airbnb listings in NYC. This information helps users narrow down their choices based on their preferences and requirements.
+  - *Host Verification*: Airbnb management can use the summary of 'host_identity_verified' to evaluate the trustworthiness of hosts, which can be a crucial factor in attracting guests.
+
+**5. Decision Support for Airbnb Management:**
+
+  - *Pricing Strategy*: Management can adjust pricing strategies based on the average price and standard deviation of prices. For example, they can offer promotional rates during low-demand seasons to attract more bookings.
+  - *Property Investment*: Data on the median number of bedrooms can inform property investment decisions. If there's a high demand for larger accommodations, management may consider acquiring or developing properties with more bedrooms.
+  - *Marketing and Targeting*: Understanding the popularity of room types or neighborhoods can help in marketing efforts. Management can target specific demographics or interests to increase occupancy rates in certain areas.
+
+In summary, these summary statistics go beyond mere data description; they empower Airbnb users to make informed booking decisions and offer valuable insights for management to optimize their property listings and pricing strategies. These insights can ultimately lead to improved guest experiences and increased revenue for hosts and Airbnb itself.
+
+***
+
+
+## b. Data Visualization
+
+
+**Faceted Bar Chart**
+```{r}
+ggplot(ny.df, aes(x= room_type, fill = room_type)) + geom_bar(color = "black", alpha = 0.7) + 
+labs(title = "Airbnb Rental Room Types in NYC by Cleaning Fee Policy", x = NULL, y = "# of Airbnb Rental Listings") + 
+theme(axis.title = element_text(size = 12), legend.position = "bottom") + scale_x_discrete(labels = NULL) + 
+facet_wrap(~cleaning_fee, 
+           labeller = labeller(cleaning_fee = c(
+               "True" = "With Cleaning Fee", "False" = "Without Cleaning Fee"))) + 
+scale_fill_discrete(name = "Room Type") 
+```
+Our first visualization is a faceted bar chart that meticulously dissects Airbnb rental room types in NYC based on their cleaning fee policies. By segmenting the data in this manner, we reveal valuable insights that can help both hosts and guests. For Airbnb management, this information can aid in setting competitive pricing strategies and policies for different room types. Guests can benefit from this knowledge by making more informed decisions about accommodation based on their preferences and budget. This plot uncovers that cleaning fees are prevalent, especially for 'entire home/apartment' listings. Such insights can guide both hosts and guests in negotiations and bookings.
+
+
+**Histogram**
+```{r}
+ggplot(ny.df, aes(x= accommodates)) + geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) + 
+labs(title = "Distribution of Accommodation Capacity in NYC Airbnb Rentals", 
+     x = "Number of Accomodated Guests", y= "# of Airbnb Rental Listings") + theme_minimal() + 
+theme(axis.text = element_text(size = 11), axis.title = element_text(size = 12)) 
+```
+The second visualization, a histogram showcasing accommodation capacity distribution, lays bare the preferences of Airbnb renters in New York City. For hosts, this is a goldmine of information, allowing them to tailor their listings to the most sought-after capacities, thereby optimizing occupancy rates and revenue. For guests, this histogram is a powerful tool for finding the perfect match based on group size. It shows that most listings can comfortably host around 2 guests, but it also highlights the availability of properties for larger groups. This revelation aids in decision-making for both hosts and guests.
+
+
+**Heat Map/Correlation Matrix**
+```{r}
+ggcorrplot(corr, lab = TRUE, lab_size = 2, title = "Correlation Heatmap of NYC\nAirbnb Rental Property Data") + theme(plot.title = element_text(size = 13), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9))
+```
+Our third visualization, the correlation heatmap, delivers a deeper understanding of how various numerical variables relate to one another. For decision-makers in the Airbnb ecosystem, this plot offers predictive potential. Strong correlations between 'beds,' 'bedrooms,' and 'accommodates' with 'log_price' can be valuable for pricing optimization. Meanwhile, the negative correlation between latitude and 'log_price' suggests that location significantly influences rental prices. Hosts can set competitive prices, and guests can better assess property values based on this knowledge.
+
+
+**Proportional Bar Chart**
+```{r}
+# Define new variable 'property_group' that groups property types
+# (Goal = limit num. of levels)
+ny.df$property_group <- ifelse(ny.df$property_type %in% c("Guesthouse", "Guest suite", "In-law"), 
+                               "Guest suite/In-law", ifelse(ny.df$property_type %in% c(
+                                   "Boutique hotel", "Dorm", "Hostel", "Serviced apartment", "Timeshare"), 
+                                                            "Accommodation", ifelse(ny.df$property_type %in% c(
+                                                                "Boat", "Bungalow", "Cabin", "Castle", "Chalet", 
+                                                                "Earth House", "Tent", "Vacation home", "Villa", 
+                                                                "Yurt"), "Specialty", as.character(
+                                                                ny.df$property_type))))
+```
+
+
+```{r}
+# Create Stacked Bar Chart
+ggplot(ny.df, aes(x= accommodates, fill = property_group)) + 
+geom_bar(position = "fill", color = "black", alpha = 0.7) + 
+labs(title = "Proportion of Airbnb Listings in NYC by Accommodation\nCapacity & Property Type", 
+     x = "Accommodation Capacity", y = "Proportion of Airbnb Listings") + 
+scale_fill_discrete(name = "Property Type") + theme_minimal() +  
+theme(axis.text = element_text(size = 10), axis.title = element_text(size = 11))
+```
+The fourth visualization, a stacked bar chart, guides Airbnb management and users in understanding the distribution of property types and their capacity. This chart is an invaluable resource for hosts to fine-tune their listings based on property type and group size. Apartments emerge as the dominant choice, particularly for smaller parties. Houses, on the other hand, become more appealing for larger groups. Airbnb users can capitalize on this knowledge to make well-informed booking decisions.
+
+
+**Histogram #2**
+```{r}
+ggplot(ny.df, aes(x= log_price)) + geom_histogram(binwidth = 1, fill = "orange", color = "black", alpha = 0.7) + labs(title = "Distribution of Log Prices for NYC Airbnb Rentals", x = "Log Price ($)", y= "# of Airbnb Rental Listings") + theme_minimal() + theme(axis.text = element_text(size = 11), axis.title = element_text(size = 12)) 
+```
+Our fifth visualization is another histogram, this time focusing on the distribution of log-transformed prices. This transformed scale can unveil hidden pricing trends or clusters that are not immediately apparent. For both hosts and guests, this histogram offers deeper insights into the nuanced price dynamics of Airbnb rentals in NYC.
+
+
+**Scatterplot**
+```{r}
+ggplot(ny.df, aes(x= bedrooms, y= log_price, color = room_type, size = accommodates)) + 
+geom_point(na.rm= TRUE, alpha = 0.7) + xlim(1, 8) + 
+labs(title= "Number of Bedrooms vs. Log Price for NYC Airbnb Rentals, by Room Type & Accommodation Capacity", 
+     x= "# of Bedrooms", y= "Log Price ($)") + scale_color_discrete(name = "Room Type") + 
+scale_size_continuous(name = "Accommodation Capacity") + theme_minimal() + 
+theme(axis.text = element_text(size = 11), axis.title = element_text(size = 12), 
+      legend.text = element_text(size = 10))                                                     
+```
+Lastly, our sixth plot, a scatterplot, delves into the intricate relationship between several variables: number of bedrooms, log-transformed prices, room types, and accommodation capacity. This visualization empowers both hosts and guests to decipher how these factors interact and influence rental prices. Notably, it sheds light on the price variations tied to room type and capacity, offering actionable insights for optimizing pricing strategies and booking decisions.
+
+Together, these insightful visualizations equip Airbnb stakeholders with a wealth of information, enabling them to make data-driven decisions that enhance the Airbnb experience in New York City. Whether you're a host seeking to maximize revenue or a guest in pursuit of the perfect stay, these visualizations are your compass in navigating the NYC Airbnb landscape.
+
+
+***
+### Recap of Data Visualization
+- **Faceted Bar Chart**: Shows the distribution of room types based on cleaning fee policies. Entire home/apartment listings are far more likely to charge a cleaning fee—insightful for pricing strategies and user budgeting.
+- **Histogram – ‘Accommodates’**: Reveals that most listings host 2 guests, suggesting a strong market for couples and solo travelers, with some availability for larger groups.
+- **Correlation Heatmap**: Highlights strong correlations among ‘bedrooms’, ‘beds’, ‘accommodates’, and ‘log_price’. Negative correlation between ‘log_price’ and ‘longitude’ suggests pricing shifts by location.
+- **Proportional Bar Chart – Property Type by Capacity**: Indicates that apartments dominate for small groups, while houses and specialty listings become more common for larger guest counts.
+- **Histogram – ‘Log Price’**: Helps normalize the price distribution and exposes multi-modal pricing behavior.
+- **Scatterplot – ‘Bedrooms’ vs. ‘Price’**: Visualizes how ‘log_price’ varies with bedrooms, room type, and guest capacity—revealing meaningful price tiering by listing type and size.
+***
+
+
+
+## **3. Predictive Modeling - Estimating Airbnb Rental Prices in NYC**
+The goal of this phase is to develop a **Multiple Linear Regression (MLR) model** to *predict the log-transformed prices* of Airbnb listings in New York City. This process involves careful variable selection, model refinement, and performance evaluation to uncover the key factors that influence pricing decisions on the platform.
+
+
+### a. Variable Selection/Dimension Reduction
+
+```{r}
+ny.df_reg <- subset(ny.df, select = -c(city, description, first_review, host_has_profile_pic, 
+                                       host_since, id, last_review, name, neighbourhood, property_type, 
+                                       thumbnail_url, beds, amenities))  
+```
+
+**Note**: The decisions to remove the aforementioned variables from the dataset are described in more detail below:
+* 'city': all observations in this subset of the original dataset contain only those observations where the value for the 'city' column is "NYC." 
+* 'zipcode' & 'neighbourhood': these variables are redundant in describing the location of a listing (e.g., 'latitude', 'longitude', & 'neighbourhood' are more detailed/precise variables). 
+* 'id', 'name', & 'description': the values for each of these variables are unique to each observation. 
+* 'property_type': this variable is now redundant, as we created a new variable for property types that minimizes the number of categories (i.e., grouped less common types into larger categories).
+* 'host_has_profile_pic': as 'summary()' function implies that in a majority of the rental listings, the host has a profile picture (e.g., 32,076 = True & 97 = False). 
+* 'first_review', 'last_review' & 'host_since': the relevance of these variables could be limited to assessing the recent performance and maintenance of a listing or the performance of the host, but might not directly affect the pricing decisions.
+* 'thumbnail_url': unlikely to influence the price of an Airbnb listing, as it is typically a web link to an image, and its inclusion in the model would not offer any meaningful insights into pricing. 
+* 'beds': this variable is redundant as we have the variables 'bedroom' & 'accommodates'.
+* 'amenities': this variable is redundant in describing the amenities of each Airbnb listing. A better way to quantify this in our model is through the use of the 'amenities_count' variable.
+
+
+```{r}
+# Partition the data into training (60%) & validation (40%) sets
+set.seed(1)
+
+# Sample 60% of the data, which we will assign to the training data set
+train.index <- sample(c(1:nrow(ny.df_reg)), nrow(ny.df_reg)*0.6)  
+
+# Assign 60% of the data that we just sampled to training set
+train.df <- ny.df_reg[train.index, ]  
+
+# Assign remaining 40% of the data to validation set
+valid.df <- ny.df_reg[-train.index, ] 
+```
+  
+
+
+Identify numeric & categorical predictor variables:
+```{r}
+# Subset numeric columns from training set while excluding 'log_price'
+num_predictors <- train.df[, !(names(train.df) %in% 'log_price') & sapply(train.df, is.numeric)]
+
+# Subset remaining (categorical) columns from training set while excluding 'log_price'
+cat_predictors <- train.df[, !(names(train.df) %in% c(names(num_predictors), 'log_price'))]
+```
+
+
+Check for multicollinearity issues:
+```{r}
+# Calculate the correlation matrix with numeric variables
+reg_cor_matrix <- cor(train.df[sapply(train.df, is.numeric)])
+
+# Visualize correlation matrix
+ggcorrplot(reg_cor_matrix, lab = TRUE, lab_size = 2.5, title = "Correlation Heatmap of NYC Airbnb\nRental Property Data") + theme(plot.title = element_text(size = 13), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9))
+```
+
+Multicollinearity occurs when the input variables are highly correlated, making it challenging to distinguish the unique contribution of each variable to the model and decreasing the reliability of the model output. It should be noted that there are 2 input variables which are strongly correlated with one another - including 'bedrooms' and 'accommodates'.
+
+Nonetheless, the criterion for selecting variables to drop in the revised model was based on both their correlation with the output variable 'log_price,' as well as their correlation with each other. Given that 'accommodates' has a stronger correlation to 'log_price' than 'bedrooms', it might be wise to keep the accommodates variable and drop the 'bedrooms' variable in an effort to avoid multicollinearity issues. This choice ensures that we retain the most influential variables while eliminating unnecessary redundancy in the input features, ultimately improving the model's performance and robustness. 
+
+
+***
+### Summary of Variable Selection
+To build a clean and interpretable model, several features are removed based on redundancy, irrelevance, or data quality concerns:  
+- Dropped variables included unique identifiers (‘id’, ‘name’, ‘description’), rarely informative or highly sparse features (‘host_has_profile_pic’, ‘thumbnail_url’, ‘first_review’, ‘last_review’), and highly correlated or redundant attributes (‘beds’, ‘bedrooms’, ‘amenities’, ‘neighbourhood’, etc.).
+- A new feature, ‘property_group’, was engineered to simplify property types into broader categories (so 'property_type' is removed).  
+- Multicollinearity was evaluated using a correlation matrix. Highly correlated predictors such as ‘bedrooms’ and ‘accommodates’ were analyzed, with ‘accommodates’ retained due to its stronger association with price.
+***
+
+
+### b. Model Training & Evaluation
+
+
+**Initial MLR Model**
+```{r}
+# Run MLR of 'log_price' on all the predictors in the training set
+
+# Note: all binary nominal categorical variables will automatically be converted into dummy variables with 'm-1' dummies
+
+mlr.model <- lm(log_price ~ ., data = train.df)
+options(digits = 3, scipen = 999)
+mlr_summary <- summary(mlr.model)
+mlr_summary
+```
+
+
+```{r}
+# Summary of residuals for initial MLR model (training set)
+summary(mlr.model$residuals)
+```
+
+
+```{r}
+# Assess accuracy of initial model against training set
+accuracy(mlr.model$fitted.values, train.df$log_price)
+```
+
+
+***
+### Recap of *Initial Model*
+The dataset was split into 60% training and 40% validation subsets to ensure unbiased model evaluation. The initial MLR model was built on the full set of cleaned predictors. The model achieved the following performance on the training set:
+
+| Metric    | Value |
+|-----------|-------|
+| RMSE      | 0.362 |
+| MAE       | 0.271 |
+| MAPE      | 5.91% |
+| Adj. R²   | 0.696 |
+
+This indicates that **~69.6%** of the variability in log-transformed Airbnb rental prices is explained by the model.
+
+***
+
+
+**Refined MLR Model**
+
+
+In an effort to improve the predictive accuracy of the model, we will further refine the model by eliminating predictor variables in which the resulting p-value is greater than 0.05 -- suggesting those specific predictor variables are not linearly related to the output variable of 'log_price' when controlling for other variables. As such, we will drop predictor variables such as 'bed_type', 'host_identity_verified', and 'host_response_rate' from the model in which the p-value is greater than 0.05. 
+
+We will also drop the 'bedrooms' variable that is strongly correlated with the 'accommodates' variable to evaluate the potential impact of multicollinearity on the model's predictive accuracy. However, we will keep some of the categorical variables whose categories or levels are significant (e.g., 'borough' & 'cancellation_policy').
+
+```{r}
+# Drop insignificant predictor variables
+train.df2 <- subset(train.df, select = -c(bed_type, host_response_rate, host_identity_verified, bedrooms))
+```
+
+
+```{r}
+# Refined MLR model
+mlr.model.2 <- lm(log_price ~ ., data = train.df2)
+summary(mlr.model.2)
+```
+
+
+```{r}
+# Assess accuracy of refined model against training set
+accuracy(mlr.model.2$fitted.values, train.df$log_price)
+```
+
+
+**Stepwise Regression**
+```{r}
+# Apply stepwise regression
+# drops predictors that lack statistical significance from the intial MLR model 
+# - in an effort to determine the best subset of predictor variables 
+mlr.model.step <- step(mlr.model, direction = "both")
+summary(mlr.model.step)
+```
+After running stepwise regression on the initial model, 'bed_type' was the only variable dropped from the model. 
+
+
+```{r}
+# Assess accuracy of initial model after applying stepwise regression 
+accuracy(mlr.model.step$fitted.values, train.df$log_price)
+```
+
+
+***
+### Recap of Model Refinement
+To streamline the model without compromising performance:
+
+- Predictors with **p-values > 0.05** (e.g., ‘bed_type’, ‘host_response_rate’, ‘host_identity_verified’, ‘bedrooms’) were dropped.
+    - A **refined model** was then built, improving interpretability while retaining most predictive power.
+- A third iteration using **stepwise regression** was also conducted, automatically selecting the most statistically significant subset of features.
+***
+
+
+### **Model Evaluation & Comparison**
+```{r}
+# Fitting MLR model to validation data & measuring model accuracy
+library (forecast)  # load 'forecast' package for predictions
+
+# Initial model
+mlr.pred <- predict(mlr.model, newdata= valid.df)
+accuracy(mlr.pred, valid.df$log_price)
+```
+
+
+```{r}
+# Refined model
+mlr.2.pred <- predict(mlr.model.2, newdata= valid.df)
+accuracy(mlr.2.pred, valid.df$log_price)
+```
+
+
+```{r}
+# Intial model + Stepwise regression
+mlr.step.pred <- predict(mlr.model.step, newdata= valid.df)
+accuracy(mlr.step.pred, valid.df$log_price)
+```
+
+
+```{r}
+all.residuals <- valid.df$log_price - mlr.step.pred
+hist(all.residuals, breaks = 25, xlab = "Residuals", main = " ")
+```
+Based on the histogram of residual errors when the model is fit to the validation data, one can conclude that most errors are between -1 and 1 (i.e., error magnitude). This indicates low error variance and a well-behaved residual distribution.
+
+
+***
+### Recap of Regression Modeling
+Three model versions were tested on the validation set:
+
+| Model                        | RMSE  | MAE   | MAPE  |
+|-----------------------------|-------|-------|--------|
+| Initial MLR                 | 0.362 | 0.274 | 5.98%  |
+| Refined MLR (fewer vars)    | 0.365 | 0.276 | 6.04%  |
+| Stepwise Regression Model   | 0.362 | 0.274 | 5.99%  |
+
+#### Key Findings:
+- The initial model, despite including both ‘bedrooms’ and ‘accommodates’, delivered the best balance of fit and interpretability.
+- **Model fit**: Adjusted R² of 0.696 indicates strong explanatory power for log-transformed prices.
+    - The inital model had a slightly higher adjusted R-squared value, indicating that it explains a bit more of the variance in 'log_price' compared to the refined model.
+- **Predictive performance**: RMSE of ~0.362 suggests reasonably low error in predictions, even on unseen data.
+    - RMSE for the initial model is slightly lower, which means it has slightly better predictive accuracy in terms of the error between predicted and actual 'log_price' values.
+- **Interpretable results**: Most significant variables are intuitive and aligned with market behavior, offering practical utility.
+
+#### Business Insights & Implications
+This model offers actionable insights for hosts, guests, and Airbnb itself:
+- Accommodation capacity (‘accommodates’) and location (‘borough’) are strong predictors of price.
+- Host responsiveness, property type, and cancellation policy also influence pricing strategies.
+- The model's generalizability (consistent RMSE across train and validation sets) supports its application to future price-setting or valuation tools.
+
+***
+
+#### Conclusion 
+The multiple linear regression model built in this phase provides a reliable, interpretable, and data-driven approach to understanding Airbnb rental pricing in NYC. By identifying the features that matter most—like guest capacity, location, and the number of available amenities, this model empowers:
+
+***
+
+- Hosts to competitively price listings  
+- Guests to evaluate value for money  
+- Airbnb to enhance platform pricing algorithms
+
+The model explains a substantial portion of the price variability, but further research could explore additional factors to enhance predictive accuracy (e.g., seasonality, user review sentiment, or calendar availability).
+
+
+
+## **4. Classification - Predicting Rental Characteristics**
+This section explores the application of three *supervised classification algorithms* to answer three key business questions related to NYC Airbnb rentals:
+1. Will a rental include a cleaning fee? (**k-Nearest Neighbors**)
+2. Can we classify Airbnb rentals into price tiers? (**Naive Bayes**)
+3. Can we predict a host’s cancellation policy? (**Classification Tree**)
+
+
+## a. k-Nearest Neighbors (k-NN) - *Predicting Cleaning Fees*
+
+
+### Data Preprocessing & Partitioning
+
+```{r}
+# Convert the predictive outcome of 'cleaning_fee' into a factor
+ny_k.df <- ny.df
+ny_k.df$cleaning_fee <- as.factor(ny.df$cleaning_fee)
+str(ny_k.df$cleaning_fee)
+```
+
+
+```{r}
+# Remove columns not used as predictors (i.e., variables not relevant to cleaning fees)
+ny_k.df <- subset(ny_k.df, select = -c(
+    id, amenities, bed_type, city, description, first_review, host_has_profile_pic, 
+    host_identity_verified, host_response_rate, host_since, last_review, name, 
+    neighbourhood, thumbnail_url, property_group))
+
+summary(ny_k.df)
+```
+
+
+```{r}
+# Set seed with value 60 & partition the dataset into training (60%) & validation (40%) sets
+set.seed(60)  # Set the seed here
+ny_k.df_train.index <- sample(c(1:nrow(ny_k.df)), nrow(ny_k.df) * 0.6)
+ny_k_train.df <- ny_k.df[ny_k.df_train.index, ]
+ny_k_valid.df <- ny_k.df[-ny_k.df_train.index, ]
+```
+
+
+### **Separate Rentals**
+```{r}
+# Separate the rentals with/without a cleaning fee in training set
+train.df_t <- subset(ny_k_train.df, cleaning_fee == "True")
+train.df_f <- subset(ny_k_train.df, cleaning_fee == "False")
+```
+
+
+### **Examine Differences in Mean Values**
+```{r}
+# Examine the percentage difference in the mean value among the numeric predictor variables
+(mean(train.df_t$log_price) - mean(train.df_f$log_price)) * 100
+(mean(train.df_t$accommodates) - mean(train.df_f$accommodates)) * 100
+(mean(train.df_t$bathrooms) - mean(train.df_f$bathrooms)) * 100
+(mean(train.df_t$bedrooms) - mean(train.df_f$bedrooms)) * 100
+(mean(train.df_t$beds) - mean(train.df_f$beds)) * 100
+```
+
+
+### **Variable Selection**
+```{r}
+# If any variables are categorical or show less than 10% difference in mean value between the two groups, 
+# remove those variables entirely
+ny_k_train.df <- subset(ny_k_train.df, select = -c(
+    bathrooms, property_type, room_type, cancellation_policy, borough, instant_bookable))
+ny_k_valid.df <- subset(ny_k_valid.df, select = -c(
+    bathrooms, property_type, room_type, cancellation_policy, borough, instant_bookable))
+ny_k.df <- subset(ny_k.df, select = -c(
+    bathrooms, property_type, room_type, cancellation_policy, borough, instant_bookable))
+
+str(ny_k_train.df)
+```
+
+
+### **Normalization**
+```{r}
+# Normalize the data using the training set & 'preProcess()' function.
+library(caret)  # Load the caret library
+train.norm.df <- ny_k_train.df
+valid.norm.df <- ny_k_valid.df
+ny_k.norm.df <- ny_k.df
+
+# Specify the columns to normalize
+columns_to_normalize <- c("log_price", "accommodates", "bedrooms", "beds")
+
+# Create a preProcess object
+norm_values <- preProcess(ny_k_train.df[, columns_to_normalize], method = c("center", "scale"))
+
+# Apply normalization to the training and validation data
+train.norm.df[, columns_to_normalize] <- predict(norm_values, ny_k_train.df[, columns_to_normalize])
+valid.norm.df[, columns_to_normalize] <- predict(norm_values, ny_k_valid.df[, columns_to_normalize])
+ny_k.norm.df[, columns_to_normalize] <- predict(norm_values, ny_k.df[, columns_to_normalize])
+```
+
+
+### **Create New Rental**
+```{r}
+# Make up a new rental to predict/classify the cleaning fee to train the model
+new.df <- data.frame(log_price = 4, accommodates = 5, bedrooms = 4, beds = 5)
+
+# Ensure that the columns in new.df match the columns used for normalization in the training data
+new.df[, columns_to_normalize] <- predict(norm_values, new.df[, columns_to_normalize])
+```
+
+
+### **k-nn Model Evaluation**
+```{r}
+# Using the validation data & a range of k values from 1 to 14, 
+# access the accuracy level for each k value from 1 to 14
+
+# Initialize a data frame with two columns: k, & accuracy
+accuracy.df <- data.frame(k = seq(1, 14, 1), accuracy = rep(0, 14))
+
+# Compute the accuracy level for each k value & find the optimal k-value
+for (i in 1:14) {
+  knn.pred <- knn(train.norm.df[, columns_to_normalize], 
+                  valid.norm.df[, columns_to_normalize], 
+                  cl = train.norm.df[, "cleaning_fee"], k = i)
+  accuracy.df[i, 2] <- confusionMatrix(knn.pred, valid.norm.df[, "cleaning_fee"])$overall[1]
+}
+
+accuracy.df
+```
+
+
+### **k-nn Model Prediction**
+```{r}
+# Using the knn() function, the normalized training data, & the optimal k=11, 
+# generate a predicted classification of cleaning_fee for the new rental.
+optimal_k <- which.max(accuracy.df$accuracy)
+optimal_k_value <- accuracy.df$k[optimal_k]
+
+nn <- knn(train = train.norm.df[, columns_to_normalize], 
+          test = new.df[, columns_to_normalize], 
+          cl = train.norm.df[, "cleaning_fee"], k = optimal_k_value)
+predicted_cleaning_fee <- as.character(nn)
+predicted_cleaning_fee
+```
+
+The prediction is 'True' - the fictional NYC Airbnb rental will have a cleaning fee.
+
+
+
+
+
+### **Explanation of k-NN Model**
+In the third part of the data mining project, a k-nearest neighbors (k-NN) classification model was implemented to predict whether or not an Airbnb rental in New York City would include a cleaning fee. The construction of this predictive model involved several systematic steps to ensure its reliability and accuracy.
+
+To begin, the dataset was preprocessed by transforming the 'cleaning_fee' variable into a factor, representing the presence or absence of cleaning fees. Subsequently, irrelevant columns, such as URLs and non-predictive attributes, were removed from the dataset. Missing values were also handled by eliminating rows with any NA values, as k-NN models do not accommodate missing data.
+
+To establish a robust model, the dataset was split into training and validation sets using a 60-40 partition while maintaining reproducibility through the application of a random seed. Within the training dataset, a comparative analysis of mean differences between rentals with and without cleaning fees was conducted for various predictor variables. This allowed for the identification of attributes that significantly contributed to the classification task. Variables demonstrating minimal differences or being categorical in nature were excluded from consideration to prevent potential similarity bias.
+
+Normalization of the data was imperative to ensure that all predictor variables contributed equally to the model. The 'preProcess' function from the 'caret' package was employed to standardize the data, rendering it suitable for k-NN classification.
+
+Subsequently, k-NN classification was performed on the validation dataset, with k values ranging from 1 to 14. Model accuracy was evaluated for each k value, and it was determined that the optimal k-value was 11, resulting in an accuracy rate of 73.3%.
+
+Finally, the k-NN model with the optimal k-value was applied to predict whether a fictitious rental, characterized by specific attributes (log_price = 4, accommodates = 5, bedrooms = 4, beds = 5), would include a cleaning fee. The model produced a prediction of 'True,' indicating that the new rental was likely to have a cleaning fee.
+
+In this instance, it is vital to address and safeguard the model against similarity bias. Similarity bias occurs when the model assigns similar instances to the same class without adequately considering individual attribute importance. This can lead to misclassification, particularly when variables exhibit strong correlations or when categorical variables are not treated with appropriate consideration. The removal of variables with minimal class differences and categorical attributes aimed to mitigate similarity bias, ensuring the model's accuracy and fairness in classifying cleaning fees for Airbnb rentals in New York City.
+
+
+
+
+
+### Summary of k-NN modeling
+A k-Nearest Neighbors model was built to *classify* whether a New York City Airbnb listing **includes a cleaning fee**. The modeling pipeline included the following steps:
+
+- **Preprocessing**: Converted `cleaning_fee` into a factor variable and removed irrelevant columns such as ID, name, and host descriptions. Rows with missing values were excluded.  
+- **Feature Selection**: Variables with minimal class-based mean differences (≤10%) and categorical features were removed to minimize similarity bias. Final predictors included `log_price`, `accommodates`, `bedrooms`, `beds`, `latitude`, `longitude`, `number_of_reviews`, `review_scores_rating`, and `amenities_count`.  
+- **Normalization**: Numeric predictors were standardized using the `caret::preProcess()` function to ensure distance-based calculations were meaningful in k-NN.  
+- **Model Training & Tuning**: A range of `k` values from 1 to 14 were tested on a 60/40 train/validation split. The model with k = 11 achieved the highest validation accuracy of 73.3%.  
+- **New Prediction**: The optimized k-NN model predicted that a new fictional listing (log price = 4, accommodates = 5, bedrooms = 4, beds = 5) would include a cleaning fee (True).
+
+> By removing variables prone to similarity bias and focusing on impactful continuous predictors, the model provided a reliable prediction of cleaning fee presence. The normalization step was crucial for performance.
+
+
+## b. Naive Bayes Classifier - *Predicting Price Tiers*
+
+
+### Data Preprocessing
+
+```{r}
+# Create copy of dataset & generate summary of 'log_price'
+ny_nb.df<- ny.df
+summary(ny_nb.df$log_price)
+```
+
+
+### **Binning the 'log_price' Variable**
+```{r}
+# Create bins for the 'log_price' variable
+ny_nb.df$log_price <- cut(ny_nb.df$log_price, breaks=c(0.000, 4.248, 4.654, 5.165, 7.600), 
+                          labels=c("Pricey Digs", "Above Average", "Below Average", "Student Budget"))
+
+str(ny_nb.df$log_price)
+```
+
+
+### **Select Predictor Variables**
+```{r}
+# Subset necessary columns
+ny_nb.df <- subset(ny_nb.df, select = c(log_price, accommodates, bedrooms, bathrooms, room_type, property_type))
+```
+
+Note: Five predictors variables were selected for model building: property_type, room_type, accommodates, bathrooms, bedrooms
+
+
+### **Convert Numerical Variables to Categorical**
+```{r}
+# Convert numerical variables to categorical 
+ny_nb.df$accommodates <- factor(ny_nb.df$accommodates)
+ny_nb.df$bathrooms <- factor(ny_nb.df$bathrooms)
+ny_nb.df$bedrooms <- factor(ny_nb.df$bedrooms)
+```
+
+
+### **Partition Dataset**
+```{r}
+# Partition dataset into training & validation sets
+set.seed(60)
+train_nb.index <- sample(c(1:dim(ny_nb.df)[1]), dim(ny_nb.df)[1]*0.6)
+selected.var <- c(1, 2, 3, 4, 5, 6)
+train_nb.df <- ny_nb.df[train_nb.index, selected.var]
+valid_nb.df <- ny_nb.df[-train_nb.index, selected.var]
+```
+
+
+### **Naive Bayes Model**
+```{r}
+# Generate Naive Bayes model
+ny_nb <- naiveBayes(log_price ~ ., data = train_nb.df)
+ny_nb
+```
+
+The **'A-priori probabilities'** given above denote the likelihood that an Airbnb listing in NYC belongs to each of these four classes. The *likelihood of each class occuring in the training data* is as follows:
+* "Pricey Digs": 0.279
+* "Above Average": 0.261
+* "Below Average": 0.237
+* "Student Budget": 0.224
+
+The **Naive Bayes classifier** will use these probabilities to make predictions. For instance, given a set of predictor variable values, the classifier will calculate the probability of the instance (i.e., the Airbnb listing) belonging to each class and assign it to the most likely class (the one with the highest probability).
+
+
+### **Predict Price Class for a Fictional Listing**
+
+To demonstrate, we will *predict the price class* for a fictional apartment with the following characteristics: 
+- `property_type` = “Apartment”
+- `room_type` = “Entire home/apt”
+- `accommodates` = 4
+- `bathrooms` = 1
+- `bedrooms` = 3
+
+```{r}
+# Predict probabilities & class membership for fictional listing
+pred.prob <- predict(ny_nb, newdata = valid_nb.df, type = "raw")
+pred.class <- predict(ny_nb, newdata = valid_nb.df)
+df <- data.frame(actual = valid_nb.df$log_price, predicted = pred.class, pred.prob)
+df[valid_nb.df$property_type == "Apartment" & 
+   valid_nb.df$room_type == "Entire home/apt" & 
+   valid_nb.df$accommodates == 4 & 
+   valid_nb.df$bathrooms == 1 & 
+   valid_nb.df$bedrooms == 3,]
+```
+
+
+### **Confusion Matrix**
+```{r}
+# Training set
+pred.class <- predict(ny_nb, newdata = train_nb.df)
+confusionMatrix(pred.class, train_nb.df$log_price)
+```
+
+
+```{r}
+# Validation set
+pred.class <- predict(ny_nb, newdata = valid_nb.df)
+confusionMatrix(pred.class, valid_nb.df$log_price)
+```
+
+### **Explanation of Naive Bayes Classifier:**
+
+In this section of the project, we implemented the Naive Bayes algorithm to categorize Airbnb rental prices in New York City (NYC) into four distinct bins: "Pricey Digs," "Above Average," "Below Average," and "Student Budget." This categorization allows us to provide valuable insights for both Airbnb management and potential customers. The Naive Bayes model was developed using a subset of the original data for NYC that includes five carefully chosen predictor variables: property type, room type, accommodates (the number of guests the listing can accommodate), bathrooms, and bedrooms.
+
+The first step was to create the price bins based on the 'log_price' variable. We split the prices into four categories, ensuring an approximately equal distribution of listings across these categories. The summary of the 'log_price' variable indicates that the rental prices in NYC range from 2.30 to 7.60, with a median of 4.61. After binning, we converted the numerical predictor variables ('accommodates,' 'bathrooms,' and 'bedrooms') into categorical variables to prepare them for modeling.
+
+The Naive Bayes model was then trained on a subset of the dataset, with 60% of the data used for training and the remaining 40% for validation. The model's results are shown in the output, where it calculates conditional probabilities for each combination of predictor values in relation to the four price categories. 
+
+
+### **Key Insights:**
+
+Conditional probabilities for predictor variables like 'accommodates,' 'bedrooms,' 'bathrooms,' 'room_type,' and 'property_type' play a pivotal role in the Naive Bayes classifier. These probabilities indicate the likelihood of observing particular predictor variable values within a specific class. They are used to estimate the probability of a specific class given the observed predictor variable values, helping the classifier make predictions by identifying the most probable class based on the observed data.
+
+The key insights from the model's conditional probabilities are as follows:
+
+1. **Accommodation Capacity**: Listings that can accommodate fewer guests (e.g., 'accommodates' = 1-4) are more likely to fall into the "Pricey Digs" and "Above Average" categories. This suggests that smaller properties or those suitable for fewer people are associated with higher price categories. On the other hand, listings that accommodate more guests (e.g., 'accommodates' = 5-12) are more likely to be in the "Student Budget" category. This implies that larger properties or those suitable for more people are associated with lower price categories.
+
+2. **Number of Bedrooms**: Listings with fewer bedrooms (e.g., 1 bedroom) are more likely to be in the "Pricey Digs" category, suggesting that smaller properties with fewer bedrooms tend to be in the higher price category. Conversely, listings with more bedrooms (e.g., 3-10 bedrooms) are more likely to be in the "Above Average," "Below Average," or "Student Budget" categories, indicating that larger properties with more bedrooms are associated with a range of price categories.
+
+3. **Number of Bathrooms**: Listings with fewer bathrooms (e.g., 1 bathroom) are more likely to be in the "Pricey Digs" category, suggesting that properties with fewer bathrooms are associated with higher prices. By contrast, listings with more bathrooms (e.g., 2-5 bathrooms) are more likely to be in the "Above Average," "Below Average," or "Student Budget" categories, indicating that properties with more bathrooms are distributed across different price categories.
+
+4. **Room Type**: Listings that offer an "Entire home/apt" are more likely to be in the "Pricey Digs" category, suggesting that entire homes or apartments tend to be in the higher price category. Contrarily, listings that offer a "Private room" are more likely to be in the "Above Average" category, indicating that private rooms are associated with a somewhat lower price category. Moreover, listings that offer a "Shared room" are more likely to be in the "Below Average" or "Student Budget" categories, implying that shared rooms are associated with lower price categories.
+
+5. **Property Type**: Listings with an "Apartment" property type are more likely to be in the "Pricey Digs" category, suggesting that apartments tend to be in the higher price category. On the other hand, listings with a "Bed & Breakfast" property type are more likely to be in the "Above Average" category, indicating that bed & breakfast accommodations are associated with a somewhat lower price category. Furthermore, listings with a "Boat" property type are more likely to be in the "Below Average" or "Student Budget" categories, implying that boats are associated with lower price categories.
+
+Furthermore, the model's performance was rigorously evaluated using confusion matrices for both the training and validation datasets. While accuracy is a useful metric, a deeper analysis of the results unveils both the model's potential and areas for enhancement. In the training set, the model achieved an accuracy of approximately 51.9%, and a similar accuracy of 50.7% in the validation set. However, accuracy alone may not provide a complete picture of the model's effectiveness.
+
+The confusion matrices reveal important insights:
+
+- **Sensitivity (True Positive Rate):** The model excels in correctly categorizing instances with 'Pricey Digs,' demonstrating a sensitivity of 87.6% in the validation set. This suggests that for high-priced listings, the model is quite reliable.
+
+- **Specificity (True Negative Rate):** The model's specificity of 70.0% in the validation set for 'Above Average' listings indicates its ability to correctly identify cases where listings are not in this category.
+
+- **Challenges in Classification:** The model faces difficulties in distinguishing between 'Above Average' and 'Below Average' listings, with sensitivity values of 8.34% and 49.5% respectively. This indicates that further improvements are needed in these areas.
+
+While the model exhibits promise, it's important to acknowledge potential drawbacks and explore reasons for underperformance in certain classes:
+
+- **Class Imbalance:** The dataset may have an uneven distribution of listings across price categories, leading to challenges in accurately predicting less-represented classes like 'Above Average.'
+
+- **Feature Selection:** The features used for prediction might not capture all the nuances influencing price categories. Feature engineering and selection processes may require refinement to improve predictive power.
+
+- **Complex Factors:** Pricing in the Airbnb marketplace can be influenced by complex factors beyond the scope of the current features, such as seasonality, local events, and market dynamics. These factors can contribute to classification difficulties.
+
+Despite these challenges, the model offers valuable assistance to Airbnb management in pricing recommendations and a deeper understanding of the factors influencing price categories. Users can benefit from insights into expected price ranges based on their preferences, which can guide them in making informed booking decisions. Ongoing model refinement and feature engineering efforts hold the potential to enhance classification accuracy and address these limitations. 
+
+
+
+
+
+### Recap: Naive Bayes Classifier
+This model *classifies* NYC Airbnb rentals into **four price categories/tiers**:
+
+- Pricey Digs  
+- Above Average  
+- Below Average  
+- Student Budget
+
+#### Modeling Steps:
+
+- **Binning**: The continuous `log_price` variable was segmented into four bins based on quartiles.  
+- **Predictors**: Five variables were used: `property_type`, `room_type`, `accommodates`, `bathrooms`, and `bedrooms`. Numeric variables were converted to categorical types for compatibility with Naive Bayes.  
+- **Data Partitioning**: 60% of the dataset was used for training, and 40% for validation.  
+- **Model Training**: The Naive Bayes classifier calculated conditional probabilities and class priors based on the training data.
+
+#### Performance Evaluation:
+
+| Dataset   | Accuracy | Kappa | Key Strength                            |
+|-----------|----------|-------|------------------------------------------|
+| Training  | 51.9%    | 0.354 | High sensitivity for "Pricey Digs" (89.3%) |
+| Validation| 50.7%    | 0.339 | Strong specificity for most classes     |
+
+> The model performed well in classifying high-priced listings but struggled with middle categories, particularly "Above Average."
+
+#### Confusion Matrix Insights:
+
+- **Sensitivity**: Strong for "Pricey Digs" (~87.6%), poor for "Above Average" (~8.3%)  
+- **Specificity**: Generally high across all classes (>70%)  
+- **Balanced Accuracy**: Highest for "Pricey Digs" and "Student Budget"
+
+#### Conditional Probability Highlights:
+
+- **Accommodates**: Small listings (1–4 people) tend toward "Pricey Digs," while larger ones (5–12) lean "Student Budget." 
+- **Bedrooms/Bathrooms**: Fewer rooms correlate with higher prices.  
+- **Room Type**: `Entire home/apt` listings dominate higher price tiers.  
+- **Property Type**: `Apartments` cluster in expensive categories, whereas unique options like `Boats` fall into lower price tiers.
+
+> Despite modest accuracy, the model provides interpretable probabilities and valuable business insights for Airbnb managers and users. Further feature engineering and addressing class imbalance could enhance performance.
+
+
+## c. Classification Tree – Predicting Cancellation Policy
+
+
+### Data Preprocessing
+
+```{r}
+ny_ct.df <- ny.df
+```
+
+
+```{r}
+# Subset data (remove unnecessary columns)
+ny_ct.df <- subset(ny_ct.df, select= - c(id, amenities, bed_type, cleaning_fee, city, description, first_review, host_since,instant_bookable, last_review, latitude, longitude, name, thumbnail_url, neighbourhood, property_group, borough))
+```
+
+
+```{r}
+# Inspect new dataset
+str(ny_ct.df)
+```
+
+
+```{r}
+# Convert character variables to factors
+ny_ct.df$property_type <- as.factor(ny_ct.df$property_type)
+ny_ct.df$room_type <- as.factor(ny_ct.df$room_type)
+ny_ct.df$host_has_profile_pic <- factor(ny_ct.df$host_has_profile_pic, levels = c("t", "f"), labels = c("True", "False"))
+
+str(ny_ct.df) # reinspect dataset
+```
+Note: 'cancellation' & 'host_identity_verified' already a factor variable & we do not need to modify any levels yet.
+
+
+```{r}
+# Change levels to "strict","moderate", & "flexible"
+levels(ny_ct.df$cancellation_policy)[levels(ny_ct.df$cancellation_policy) == "strict"] <- "strict"
+levels(ny_ct.df$cancellation_policy)[levels(ny_ct.df$cancellation_policy) == "super_strict"] <- "strict"
+levels(ny_ct.df$cancellation_policy)[levels(ny_ct.df$cancellation_policy) == "flexible"] <- "flexible"
+levels(ny_ct.df$cancellation_policy)[levels(ny_ct.df$cancellation_policy) == "moderate"] <- "moderate"
+```
+
+
+```{r}
+#Partition data into training & validation sets
+set.seed(92)
+ny_ct.df_train.index <- sample(c(1:nrow(ny_ct.df)), nrow(ny_ct.df)*0.6)
+ny_ct_train.df <- ny_ct.df[ny_ct.df_train.index, ]
+ny_ct_valid.df <- ny_ct.df[-ny_ct.df_train.index, ]
+```
+
+
+```{r}
+#Build the classification tree model
+ct <- rpart(cancellation_policy~., ny_ct_train.df, method="class", xval= 10)
+```
+
+
+```{r}
+# Determine the ideal tree size using Cross-validation
+printcp(ct)
+```
+
+
+```{r}
+# Determine the ideal tree size using Cross-validation
+plotcp(ct)
+
+# Keep the tree size where the cp value has the smallest error
+ct_pruned <- prune(ct, 
+                  cp = ct$cptable[which.min(ct$cptable[, "xerror"]), "CP"])
+
+```
+
+
+```{r}
+# Plot the pruned tree
+rpart.plot(ct_pruned, yesno = TRUE)
+```
+
+### **Explanation of Classification Tree:**
+The Classification Tree model we constructed serves the purpose of predicting Airbnb hosts' cancellation policies in New York City, a critical aspect for both hosts and guests to understand. Our journey began with a meticulous phase of data preparation, including the removal of redundant columns, data type conversions, and handling of missing values. To simplify the classification task, we consolidated two levels of the "cancellation_policy" variable into the broader "strict" category. Subsequently, we partitioned the dataset into two distinct sets: a training set (comprising 60% of the data) and a validation set (comprising 40%), ensuring adequate representation of both cancellation policy types.
+
+The construction of the decision tree model was an iterative process, involving the exploration of potential features that might influence cancellation policies. After thorough analysis, two key variables emerged as significant contributors: the number of reviews and the log price. These variables play a crucial role in understanding and predicting cancellation policies for Airbnb listings in New York City.
+
+* **Guest and Host Experience**: The number of reviews can be seen as a proxy for the level of experience both hosts and guests have had with a particular listing. Listings with a high number of reviews may indicate a history of positive experiences, while those with fewer reviews might be relatively new or less frequently booked. Guests and hosts may have different expectations and behaviors depending on the listing's review history.
+
+* **Trust and Credibility**: High review counts can contribute to building trust and credibility among potential guests. Hosts who maintain positive reviews are likely to have a more favorable cancellation policy, as they may want to uphold their reputation and maintain high occupancy rates. On the other hand, hosts with fewer reviews may adopt stricter policies to mitigate potential risks.
+
+* **Price Sensitivity**: The price of a listing is a critical factor for both guests and hosts. Higher-priced listings may have more stringent cancellation policies to protect against last-minute cancellations that could result in significant revenue loss. Lower-priced listings, on the other hand, might offer more flexible cancellation options to attract cost-conscious guests.
+
+* **Market Competition**: The pricing strategy of a listing could be influenced by the competitive landscape in the Airbnb market in New York City. Listings in highly competitive areas might offer more flexible cancellation policies to attract bookings, while those in less competitive areas may rely on stricter policies to secure confirmed reservations.
+
+* **Guest Preferences**: Different guests may have varying levels of price sensitivity and risk tolerance. Some guests may prioritize flexibility in their travel plans and be willing to pay more for it, while others may prioritize cost savings and be less concerned about the cancellation policy. Hosts may adjust their pricing and policies to align with the preferences of their target guest demographic.
+
+* **Seasonal Variations**: The importance of price and the number of reviews in predicting cancellation policies may vary seasonally. For example, during peak tourist seasons, hosts may increase prices and tighten cancellation policies to capitalize on high demand, while off-peak seasons may see lower prices and more lenient cancellation options.
+
+By considering these factors, we created a decision tree model that effectively captures the dynamics of Airbnb rental cancellation policies in New York City. This model serves as a valuable tool for understanding the interplay of guest and host behavior, pricing strategies, and market conditions, benefiting both hosts and guests in the city's Airbnb ecosystem. It empowers hosts to make informed decisions about their cancellation policies, taking into account various factors that influence their listing's attractiveness to potential guests. Likewise, guests can use this model to better predict the cancellation policies they might encounter when booking an Airbnb in New York City, enabling them to make travel plans with confidence.
+
+
+### Summary of Classification Tree
+The goal was to *classify* listings by their `cancellation_policy`: **flexible**, **moderate**, or **strict**.
+
+#### Modeling Process:
+- **Data Preprocessing**: Unnecessary variables were removed. The `cancellation_policy` variable was re-leveled to merge `strict` and `super_strict` into one class.  
+- **Partitioning**: The data was split into 60% training and 40% validation sets.  
+- **Modeling**: A classification tree was constructed using the `rpart` algorithm with 10-fold cross-validation.  
+- **Pruning**: The optimal tree was selected by minimizing cross-validated error (CP value), improving generalization.
+
+#### Key Predictors:
+- `log_price` 
+- `number_of_reviews`
+
+#### Key Findings/Business Implications:
+- **Number of Reviews**: High review counts signal trustworthy, high-traffic listings, which often lean toward more lenient cancellation policies.  
+- **Price Sensitivity**: Expensive listings may enforce stricter cancellation policies to reduce the impact of last-minute cancellations.  
+- **Market Competition & Guest Demographics**: Competitive areas might encourage flexible policies; hosts targeting cost-conscious guests may offer leniency.  
+- **Seasonality**: Hosts may modify cancellation terms based on demand patterns.
+
+> This model visually reveals the decision-making logic behind cancellation policies, offering strategic value for hosts tailoring their policies by listing price, review history, and guest profile.
+
+
+
+## **5. Clustering - Clustering Brooklyn Neighborhoods**
+This section applies **k-Means Clustering** to identify *distinct groups of Brooklyn neighborhoods* in New York City based on rental and listing characteristics.
+
+
+### Data Preprocessing
+
+```{r}
+# Subset Brooklyn neighbors to be used as labels
+ny_cluster.df <- subset(ny.df, borough == "Brooklyn")
+```
+
+
+```{r}
+# Create new variable to combine 'number_of_reviews' & 'review_scores_rating'
+ny_cluster.df <- ny_cluster.df %>%
+  mutate(avg_review_scores_rating = review_scores_rating/number_of_reviews) 
+```
+
+
+```{r}
+# Remove unnecessary columns
+ny_cluster.df <- subset(ny_cluster.df, select= -c(id, property_type, room_type, amenities, bed_type, cancellation_policy, cleaning_fee, city, description, first_review, host_has_profile_pic, host_identity_verified, host_response_rate, host_since, instant_bookable, last_review, latitude, longitude, name, number_of_reviews, review_scores_rating, thumbnail_url, bedrooms, beds, borough, property_group))
+```
+
+
+```{r}
+# Handle missing values
+ny_cluster.df <- na.omit(ny_cluster.df)
+```
+
+
+```{r}
+str(ny_cluster.df)  # Reinspect dataframe
+```
+
+
+```{r}
+# Prepare data
+cluster_labels = ny_cluster.df$neighbourhood
+feature_var <- select(ny_cluster.df, -neighbourhood)
+
+# Scale/standardize data to a mean of 0 & standard deviation of 1
+df.scale <- scale(feature_var)
+```
+### **Determine optimal number of clusters (k)**
+```{r}
+# Compute distance between observations
+ny_cluster.df.dist <- dist(df.scale)
+
+# Determine 'k' value (# of clusters) using within sum squares
+fviz_nbclust(df.scale, kmeans, method="wss") + labs(subtitle = "Elbow method")
+```
+
+
+### **k-Means Clustering**
+```{r}
+# k-means
+optimal_k <- 4
+km.out <- kmeans(df.scale, centers = optimal_k, nstart = 100)
+```
+
+
+### **Cluster Visualization/Interpretation**
+```{r}
+fviz_cluster(km.out, data = feature_var, stand = FALSE,
+             geom = "point", ellipse.type = "convex", 
+             main = "K-Means Clustering of Brooklyn Neighborhoods")
+```
+
+
+```{r}
+# Generate table with cluster assignments
+table(km.out$cluster, ny_cluster.df$neighbourhood)
+```
+
+
+```{r}
+# Determine variable means for each cluster in the original metric (i.e., kmeans model output is based on standardized data)
+aggregate(feature_var, by= list(cluster= km.out$cluster), mean)
+```
+
+
+Next, we create boxplots for each variable (i.e., `log_price`, `bathrooms`, `host_response_rate`, `latitude`, `longitude`, `review_scores_rating`) by cluster to understand the distribution of data within each cluster:
+```{r}
+# Create a data frame with cluster labels
+ny_cluster.df$cluster <- as.factor(km.out$cluster)
+```
+
+
+```{r}
+# Boxplots for log_price by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = log_price)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "log_price") +
+  ggtitle("Boxplot of log_price by Cluster")
+```
+
+
+```{r}
+# Boxplots for accommodates by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = accommodates)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "accommodates") +
+  ggtitle("Boxplot of accommodates by Cluster")
+```
+
+
+```{r}
+# Boxplots for bathrooms by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = bathrooms)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "bathrooms") +
+  ggtitle("Boxplot of bathrooms by Cluster")
+```
+
+
+```{r}
+# Boxplots for amenities_count by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = amenities_count)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "amenities_count") +
+  ggtitle("Boxplot of amenities_count by Cluster")
+```
+
+
+```{r}
+# Boxplots for avg_review_scores_rating by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = avg_review_scores_rating)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "avg_review_scores_rating") +
+  ggtitle("Boxplot of avg_review_scores_rating by Cluster")
+```
+
+
+
+
+### **Explanation of k-Means Clustering Model:**
+In the analysis of Brooklyn neighborhoods in New York City using k-Means clustering, several key steps were undertaken to uncover distinct clusters based on selected features. Initially, the data was pre-processed by narrowing it down to exclusively include Brooklyn neighborhoods and removing irrelevant columns and rows with missing values to ensure data quality. Additionally, we created a new feature, 'avg_review_scores_rating', which captures the quality of reviews more effectively by normalizing 'review_scores_rating' by 'number_of_reviews'. The features were then standardized to have a mean of 0 and a standard deviation of 1, ensuring equal influence of each variable in the clustering process (i.e., by preventing variables with larger scales from dominating the results). 
+
+The optimal number of clusters (k) was determined using the "elbow method," resulting in the selection of k=4 as the most suitable choice. k-Means clustering was executed with 100 different starting configurations to enhance the likelihood of finding a globally optimal solution. Visualizing the clusters was facilitated through scatterplots, where each neighborhood was represented by a point, and convex ellipses delineated the clusters. Additionally, a table was generated to illustrate the assignment of neighborhoods to clusters.
+
+To gain a deeper understanding of each cluster's characteristics, the means of selected variables (log_price, accommodates, bathrooms, amenities_count, and avg_review_scores_rating) were computed in their original metrics. The analysis revealed four distinct clusters of Brooklyn neighborhoods based on the selected features:
+
+* **Luxury Living (Cluster 1):** This cluster represents neighborhoods characterized by higher prices, a greater number of bathrooms, higher average review scores, larger accommodation capacities, and a wealth of amenities.
+
+* **Bare-Bone Bargains (Cluster 2):** Neighborhoods in this cluster are distinguished by lower prices, fewer bathrooms, lower average review scores, smaller accommodation capacities, and limited amenities.
+
+* **Classic Comfort (Cluster 3):** This cluster comprises neighborhoods with moderate prices, a moderate number of bathrooms, moderately low average review scores, a moderate accommodation capacity, and a moderate level of amenities.
+
+* **Your Average Joes (Cluster 4):** Neighborhoods in this cluster feature moderately low prices, fewer bathrooms, moderately high average review scores, a moderate accommodation capacity, and a limited number of amenities.
+
+In conclusion, the k-Means clustering analysis helped identify and group Brooklyn neighborhoods in New York City based on common characteristics. The distinct clusters can serve as a valuable resource for property investors, tourists, or urban planners, facilitating informed decision-making concerning Brooklyn's various neighborhoods and their unique attributes.
+
+
+### Recap on Clustering
+
+#### a. Data Preprocessing
+
+- **Subset Data**: The data was filtered to include only Brooklyn neighborhoods.  
+- **Feature Engineering**: A new variable, `avg_review_scores_rating`, was created by dividing `review_scores_rating` by `number_of_reviews` to represent normalized review quality.  
+- **Cleaning**: Irrelevant columns (e.g., IDs, descriptions, host metadata, geographic coordinates) and rows with missing values were removed.  
+- **Final Variables**: The following six features were used for clustering: `log_price`, `accommodates`, `bathrooms`, `amenities_count`, `avg_review_scores_rating`, & `neighbourhood` (used only for labeling).  
+- **Standardization**: The numeric features were standardized to have a mean of 0 and standard deviation of 1 to ensure fair clustering.
+
+#### b. Determining Optimal Clusters
+Using the **elbow method** on within-cluster sum of squares (WSS), the optimal number of clusters was determined to be `k = 4`.
+
+#### c. k-Means Clustering Results
+The **k-Means model** was trained with 100 random starting configurations to ensure convergence to a stable solution. Cluster visualization was done using scatterplots with convex ellipses.
+
+#### Cluster Profiles (Unstandardized Means):
+| Cluster | log_price | accommodates | bathrooms | amenities_count | avg_review_scores_rating |
+|---------|-----------|--------------|-----------|------------------|---------------------------|
+| 1       | 5.35      | 6.50         | 2.33      | 20.4             | 0.204                     |
+| 2       | 4.16      | 1.96         | 1.11      | 14.7             | 0.165                     |
+| 3       | 4.92      | 3.92         | 1.03      | 21.7             | 0.116                     |
+| 4       | 4.38      | 2.30         | 1.11      | 13.5             | 0.938                     |
+
+
+#### Cluster Interpretations:
+- **Cluster 1 – Luxury Living**: High price, large accommodations, more bathrooms, high amenities, and good review quality. 
+- **Cluster 2 – Bare-Bone Bargains**: Low price, small units, fewer bathrooms, and fewer amenities.  
+- **Cluster 3 – Classic Comfort**: Moderately priced listings with average space and features.  
+- **Cluster 4 – Your Average Joes**: Low-to-mid prices, fewer amenities, but strong normalized review scores.
+
+### d. Neighborhood Distribution by Cluster
+A frequency table was generated to display how Brooklyn neighborhoods were distributed across the four clusters. This provides insights into how similar or distinct various locations are in terms of rental attributes.
+
+### e. Boxplot Visualizations
+Boxplots were created to visualize variable distributions by cluster:
+- `log_price`: Revealed clear pricing tiers across clusters.  
+- `accommodates`: Larger listings clustered into higher-price groups.  
+- `bathrooms`: Cluster 1 stood out with significantly more bathrooms.  
+- `amenities_count`: Cluster 3 had the most amenities.  
+- `avg_review_scores_rating`: Cluster 4 had the highest average review rating per review count.
+
+#### Conclusion
+The k-Means clustering approach effectively grouped Brooklyn neighborhoods into four segments based on rental characteristics. These clusters provide valuable insights for:
+- **Tourists**: To target neighborhoods that fit their budget and preferences.  
+- **Property Managers**: To benchmark and align listings with similar offerings.  
+- **Urban Planners**: To understand diversity in housing types across Brooklyn.
+
+This unsupervised learning method uncovered meaningful patterns that complement the classification models and enrich the overall understanding of Airbnb rental dynamics in New York City.
+
+
+
+## **6. Conclusions + Implications of Analysis**
+This project provided a comprehensive exploration of New York City Airbnb listings using a range of machine learning techniques—including regression, classification, and clustering—to extract actionable insights from complex real-world data. The results offer meaningful implications for multiple stakeholders:
+
+
+## Strategic Applications by Stakeholder
+
+### Airbnb (Platform Owner):
+By leveraging clustering insights, Airbnb can enhance its recommendation engine. For example, if a user is browsing a listing in Williamsburg, the platform can recommend other listings in neighborhoods with similar characteristics (e.g., amenities, price point), improving user satisfaction and boosting booking conversions.
+
+### Property Owners & Managers:
+Regression and classification models enable owners to price their listings competitively based on key features (e.g., size, location, amenities). Informed by data, these models support smarter revenue management and higher occupancy rates.
+
+### Real Estate Investors:
+Investors can identify high-opportunity clusters of neighborhoods through unsupervised learning, targeting areas aligned with preferred investment profiles (e.g., low price, high review ratings, high amenity density). Insights may also be extrapolated to other urban markets.
+
+### Travelers & Airbnb Customers:
+Data-driven segmentation can guide customers toward fairly priced listings with desirable features, helping them avoid overpaying or overlooking strong value options.
+
+### Hotels & Hospitality Competitors:
+These models shed light on why customers choose Airbnb, often favoring flexibility, price, or space. Hotels can use this insight to adapt service offerings or pricing models to compete more effectively.
+
+### Market Researchers:
+The project highlights key drivers of consumer behavior in the peer-to-peer rental market, providing a framework for future analysis in similar sectors or regions.
+
+### Policy Makers & Urban Planners:
+Regulatory agencies can use these findings to better understand the Airbnb ecosystem’s impact on housing, tourism, and urban development, aiding in policy formulation around zoning, taxation, and neighborhood preservation.
+
+
+## Broader Implications
+While focused on New York City, this project provides a reusable blueprint for exploring short-term rental dynamics in other metropolitan areas. The methodologies employed - such as price tier classification, cleaning fee prediction, and neighborhood clustering - can be replicated with local data to inform decision-making in other tourism-heavy cities.
+
+
+> **Final Thoughts**:  
+> This data mining initiative bridges analytics with real-world impact. From pricing strategy to urban policy, the findings underscore how well-applied machine learning models can drive better decisions, deepen customer understanding, and ultimately create more efficient and equitable marketplaces.
