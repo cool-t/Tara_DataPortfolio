@@ -1,0 +1,234 @@
+---
+title: "**Data Mining Project: Analysis of Airbnb Rentals in NYC**"
+subtitle: "**Unsupervised Learning - Clustering Brooklyn Neighborhoods**"
+author: Tara Cool
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r}
+# Load required packages
+library(dplyr)
+library(ggplot2)
+library(factoextra)
+```
+
+```{r}
+# Read data into local environment
+ny.df <- read.csv("new_train.csv")
+```
+
+# Unsupervised Learning - *Clustering Brooklyn Neighborhoods*
+
+
+This section applies **k-Means Clustering** to identify *distinct groups of Brooklyn neighborhoods* in New York City based on rental and listing characteristics.
+
+
+### Data Preprocessing
+
+```{r}
+# Subset Brooklyn neighbors to be used as labels
+ny_cluster.df <- subset(ny.df, borough == "Brooklyn")
+```
+
+
+```{r}
+# Create new variable to combine 'number_of_reviews' & 'review_scores_rating'
+ny_cluster.df <- ny_cluster.df %>%
+  mutate(avg_review_scores_rating = review_scores_rating/number_of_reviews) 
+```
+
+
+```{r}
+# Remove unnecessary columns
+ny_cluster.df <- subset(ny_cluster.df, select= -c(id, property_type, room_type, amenities, bed_type, cancellation_policy, cleaning_fee, city, description, first_review, host_has_profile_pic, host_identity_verified, host_response_rate, host_since, instant_bookable, last_review, latitude, longitude, name, number_of_reviews, review_scores_rating, thumbnail_url, bedrooms, beds, borough, property_group))
+```
+
+
+```{r}
+# Handle missing values
+ny_cluster.df <- na.omit(ny_cluster.df)
+```
+
+
+```{r}
+str(ny_cluster.df)  # Reinspect dataframe
+```
+
+
+```{r}
+# Prepare data
+cluster_labels = ny_cluster.df$neighbourhood
+feature_var <- select(ny_cluster.df, -neighbourhood)
+
+# Scale/standardize data to a mean of 0 & standard deviation of 1
+df.scale <- scale(feature_var)
+```
+### **Determine optimal number of clusters (k)**
+```{r}
+# Compute distance between observations
+ny_cluster.df.dist <- dist(df.scale)
+
+# Determine 'k' value (# of clusters) using within sum squares
+fviz_nbclust(df.scale, kmeans, method="wss") + labs(subtitle = "Elbow method")
+```
+
+
+### **k-Means Clustering**
+```{r}
+# k-means
+optimal_k <- 4
+km.out <- kmeans(df.scale, centers = optimal_k, nstart = 100)
+```
+
+
+### **Cluster Visualization/Interpretation**
+```{r}
+fviz_cluster(km.out, data = feature_var, stand = FALSE,
+             geom = "point", ellipse.type = "convex", 
+             main = "K-Means Clustering of Brooklyn Neighborhoods")
+```
+
+
+```{r}
+# Generate table with cluster assignments
+table(km.out$cluster, ny_cluster.df$neighbourhood)
+```
+
+
+```{r}
+# Determine variable means for each cluster in the original metric (i.e., kmeans model output is based on standardized data)
+aggregate(feature_var, by= list(cluster= km.out$cluster), mean)
+```
+
+
+Next, we create boxplots for each variable (i.e., `log_price`, `bathrooms`, `host_response_rate`, `latitude`, `longitude`, `review_scores_rating`) by cluster to understand the distribution of data within each cluster:
+```{r}
+# Create a data frame with cluster labels
+ny_cluster.df$cluster <- as.factor(km.out$cluster)
+```
+
+
+```{r}
+# Boxplots for log_price by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = log_price)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "log_price") +
+  ggtitle("Boxplot of log_price by Cluster")
+```
+
+
+```{r}
+# Boxplots for accommodates by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = accommodates)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "accommodates") +
+  ggtitle("Boxplot of accommodates by Cluster")
+```
+
+
+```{r}
+# Boxplots for bathrooms by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = bathrooms)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "bathrooms") +
+  ggtitle("Boxplot of bathrooms by Cluster")
+```
+
+
+```{r}
+# Boxplots for amenities_count by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = amenities_count)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "amenities_count") +
+  ggtitle("Boxplot of amenities_count by Cluster")
+```
+
+
+```{r}
+# Boxplots for avg_review_scores_rating by cluster
+ggplot(ny_cluster.df, aes(x = cluster, y = avg_review_scores_rating)) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "avg_review_scores_rating") +
+  ggtitle("Boxplot of avg_review_scores_rating by Cluster")
+```
+
+
+
+
+### **Explanation of k-Means Clustering Model:**
+In the analysis of Brooklyn neighborhoods in New York City using k-Means clustering, several key steps were undertaken to uncover distinct clusters based on selected features. Initially, the data was pre-processed by narrowing it down to exclusively include Brooklyn neighborhoods and removing irrelevant columns and rows with missing values to ensure data quality. Additionally, we created a new feature, 'avg_review_scores_rating', which captures the quality of reviews more effectively by normalizing 'review_scores_rating' by 'number_of_reviews'. The features were then standardized to have a mean of 0 and a standard deviation of 1, ensuring equal influence of each variable in the clustering process (i.e., by preventing variables with larger scales from dominating the results). 
+
+The optimal number of clusters (k) was determined using the "elbow method," resulting in the selection of k=4 as the most suitable choice. k-Means clustering was executed with 100 different starting configurations to enhance the likelihood of finding a globally optimal solution. Visualizing the clusters was facilitated through scatterplots, where each neighborhood was represented by a point, and convex ellipses delineated the clusters. Additionally, a table was generated to illustrate the assignment of neighborhoods to clusters.
+
+To gain a deeper understanding of each cluster's characteristics, the means of selected variables (log_price, accommodates, bathrooms, amenities_count, and avg_review_scores_rating) were computed in their original metrics. The analysis revealed four distinct clusters of Brooklyn neighborhoods based on the selected features:
+
+* **Luxury Living (Cluster 1):** This cluster represents neighborhoods characterized by higher prices, a greater number of bathrooms, higher average review scores, larger accommodation capacities, and a wealth of amenities.
+
+* **Bare-Bone Bargains (Cluster 2):** Neighborhoods in this cluster are distinguished by lower prices, fewer bathrooms, lower average review scores, smaller accommodation capacities, and limited amenities.
+
+* **Classic Comfort (Cluster 3):** This cluster comprises neighborhoods with moderate prices, a moderate number of bathrooms, moderately low average review scores, a moderate accommodation capacity, and a moderate level of amenities.
+
+* **Your Average Joes (Cluster 4):** Neighborhoods in this cluster feature moderately low prices, fewer bathrooms, moderately high average review scores, a moderate accommodation capacity, and a limited number of amenities.
+
+In conclusion, the k-Means clustering analysis helped identify and group Brooklyn neighborhoods in New York City based on common characteristics. The distinct clusters can serve as a valuable resource for property investors, tourists, or urban planners, facilitating informed decision-making concerning Brooklyn's various neighborhoods and their unique attributes.
+
+<!-- #region -->
+### Recap on Clustering
+
+#### a. Data Preprocessing
+
+- **Subset Data**: The data was filtered to include only Brooklyn neighborhoods.  
+- **Feature Engineering**: A new variable, `avg_review_scores_rating`, was created by dividing `review_scores_rating` by `number_of_reviews` to represent normalized review quality.  
+- **Cleaning**: Irrelevant columns (e.g., IDs, descriptions, host metadata, geographic coordinates) and rows with missing values were removed.  
+- **Final Variables**: The following six features were used for clustering: `log_price`, `accommodates`, `bathrooms`, `amenities_count`, `avg_review_scores_rating`, & `neighbourhood` (used only for labeling).  
+- **Standardization**: The numeric features were standardized to have a mean of 0 and standard deviation of 1 to ensure fair clustering.
+
+#### b. Determining Optimal Clusters
+Using the **elbow method** on within-cluster sum of squares (WSS), the optimal number of clusters was determined to be `k = 4`.
+
+#### c. k-Means Clustering Results
+The **k-Means model** was trained with 100 random starting configurations to ensure convergence to a stable solution. Cluster visualization was done using scatterplots with convex ellipses.
+
+#### Cluster Profiles (Unstandardized Means):
+| Cluster | log_price | accommodates | bathrooms | amenities_count | avg_review_scores_rating |
+|---------|-----------|--------------|-----------|------------------|---------------------------|
+| 1       | 5.35      | 6.50         | 2.33      | 20.4             | 0.204                     |
+| 2       | 4.16      | 1.96         | 1.11      | 14.7             | 0.165                     |
+| 3       | 4.92      | 3.92         | 1.03      | 21.7             | 0.116                     |
+| 4       | 4.38      | 2.30         | 1.11      | 13.5             | 0.938                     |
+
+
+#### Cluster Interpretations:
+- **Cluster 1 – Luxury Living**: High price, large accommodations, more bathrooms, high amenities, and good review quality. 
+- **Cluster 2 – Bare-Bone Bargains**: Low price, small units, fewer bathrooms, and fewer amenities.  
+- **Cluster 3 – Classic Comfort**: Moderately priced listings with average space and features.  
+- **Cluster 4 – Your Average Joes**: Low-to-mid prices, fewer amenities, but strong normalized review scores.
+
+### d. Neighborhood Distribution by Cluster
+A frequency table was generated to display how Brooklyn neighborhoods were distributed across the four clusters. This provides insights into how similar or distinct various locations are in terms of rental attributes.
+
+### e. Boxplot Visualizations
+Boxplots were created to visualize variable distributions by cluster:
+- `log_price`: Revealed clear pricing tiers across clusters.  
+- `accommodates`: Larger listings clustered into higher-price groups.  
+- `bathrooms`: Cluster 1 stood out with significantly more bathrooms.  
+- `amenities_count`: Cluster 3 had the most amenities.  
+- `avg_review_scores_rating`: Cluster 4 had the highest average review rating per review count.
+
+#### Conclusion
+The k-Means clustering approach effectively grouped Brooklyn neighborhoods into four segments based on rental characteristics. These clusters provide valuable insights for:
+- **Tourists**: To target neighborhoods that fit their budget and preferences.  
+- **Property Managers**: To benchmark and align listings with similar offerings.  
+- **Urban Planners**: To understand diversity in housing types across Brooklyn.
+
+This unsupervised learning method uncovered meaningful patterns that complement the classification models and enrich the overall understanding of Airbnb rental dynamics in New York City.
+<!-- #endregion -->
+
+The following code is used to save an updated version of the prepared data to the current working directory.
+
+```{r}
+# Save to current working directory
+write.csv(ny.df, "new_train.csv", row.names = FALSE)
+```

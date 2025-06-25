@@ -1,0 +1,219 @@
+---
+title: "**Data Mining Project: Analysis of Airbnb Rentals in NYC**"
+author: "Tara Cool"
+subtitle: "**Data Preparation**"
+output: html_document
+---
+
+
+New York City’s Airbnb market is one of the most active and varied short-term rental ecosystems in the world – shaped by neighborhood trends, pricing dynamics, and host behaviors. This data mining project explores that complexity using predictive modeling, classification, clustering, and visualization to uncover patterns that can guide hosts, guests, investors, and policymakers.
+
+The analysis leverages real-world Airbnb data to uncover drivers of rental price variation, reveal booking behavior trends, and compare neighborhoods across the city – especially within Brooklyn. Through a mix of data wrangling, machine learning, and statistical analysis in R, this project delivers actionable insights and highlights opportunities for smarter, data-informed decision-making in the short-term rental space.
+
+```{r}
+# Load required packages
+library(scales)
+library(data.table)
+library(dplyr)
+library(forcats)
+```
+
+```{r}
+# Read data into local environment
+df <- read.csv("train.csv")
+```
+
+
+# Data Preprocessing
+
+
+Before any predictive modeling, the data is preprocessed to ensure quality, completeness, and contextual richness in the Airbnb rental dataset for New York City.
+
+```{r}
+# Subset data frame to include only those records pertaining to NYC
+ny.df <- df[df$city == "NYC", ]
+```
+
+
+### a. Dealing with Missing Values
+
+```{r}
+# Convert blank cells to 'NA's
+ny.df[ny.df == ""] <- NA
+
+# Calculate number of 'NA' values in data frame
+sum(is.na(ny.df))  
+```
+
+
+```{r}
+# Get percentage of rows that are "complete cases" (i.e., not missing values) 
+percent(sum(complete.cases(ny.df))/nrow(ny.df), accuracy = 0.01)
+```
+
+
+Next, we will evaluate count/proportion of ‘NA’ values corresponding to each variable to **understand the potential impact of dropping/imputing these missing values**. These insights will guide our process in deciding how we will handle NA values (i.e., drop or impute) for each data mining task (e.g., prediction, classification, & clustering).
+```{r}
+# Subset columns that contain "NA" values & get count of NA values in each column 
+num_NAs <- colSums(is.na(ny.df))  
+
+# Compute percent of NA values in each column
+prop_NAs <- percent(num_NAs/nrow(ny.df), accuracy = 0.01)  
+
+# Create df to store missing value counts for each variable
+var_NAs.df <- data.frame(num_NAs, prop_NAs)
+
+# Convert to table
+var_NAs <- data.table(var_NAs.df, keep.rownames = TRUE) 
+colnames(var_NAs) <- c("Variable", "Num. of NAs", "% NAs")
+
+var_NAs  # print table
+```
+
+```{r}
+# Handle missing values for numerical variables by imputing with median
+
+# Convert 'host_response_rate' from character value to numerical
+ny.df$host_response_rate <- as.numeric(sub("%", " ", ny.df$host_response_rate))
+
+# Impute for missing values with median
+ny.df$bathrooms[is.na(ny.df$bathrooms)] <- median(ny.df$bathrooms, na.rm = TRUE)
+ny.df$host_response_rate[is.na(ny.df$host_response_rate)] <- median(ny.df$host_response_rate, na.rm = TRUE)
+ny.df$review_scores_rating[is.na(ny.df$review_scores_rating)] <- median(ny.df$review_scores_rating, na.rm = TRUE)
+ny.df$bedrooms[is.na(ny.df$bedrooms)] <- median(ny.df$bedrooms, na.rm = TRUE)
+ny.df$beds[is.na(ny.df$beds)] <- median(ny.df$beds, na.rm = TRUE)
+```
+
+**Note**: The decision to impute missing values for numerical variables, such as 'host_response_rate,' 'bathrooms,' 'review_scores_rating,' 'bedrooms,' and 'beds,' with their respective medians serves the purpose of preserving the data's central tendencies while reducing the potential impact of outliers.
+
+```{r}
+# Drop NA values for categorical variables that were not imputed
+ny.df <- na.omit(ny.df)
+```
+
+
+### b. Data Cleaning
+
+```{r}
+# Subset values not equal to 0, as 0 is unrealistic for many numeric variables
+ny.df <- ny.df %>% filter(log_price > 0)
+ny.df <- ny.df %>% filter(accommodates > 0)
+ny.df <- ny.df %>% filter(bathrooms > 0)
+ny.df <- ny.df %>% filter(number_of_reviews > 0)
+ny.df <- ny.df %>% filter(review_scores_rating > 0)
+ny.df <- ny.df %>% filter(bedrooms > 0)
+```
+
+
+```{r}
+# Convert 'host_response_rate' & 'review_scores_rating' to decimal values that denote percentages
+ny.df$host_response_rate <- round((ny.df$host_response_rate)/100, 2)
+ny.df$review_scores_rating <- round((ny.df$review_scores_rating)/100, 2)
+```
+
+
+```{r}
+# Subset of valid 'zipcode' values
+# all valid zipcodes include 5 digits
+valid_zipcode <- nchar(ny.df$zipcode) == 5
+
+# Filter dataframe to keep only those rows with valid zipcodes
+ny.df <- ny.df[valid_zipcode, ]
+```
+
+
+```{r}
+# Convert 't'/'f' to 'True'/'False'
+ny.df$host_identity_verified <- factor(ny.df$host_identity_verified, levels = c("t", "f"), labels = c("True", "False"))
+ny.df$instant_bookable <- factor(ny.df$instant_bookable, levels = c("t", "f"), labels = c("True", "False"))
+```
+
+
+***
+### Summary of Data Preprocessing Steps
+- Focused on NYC listings by filtering to New York City entries.
+- Addressed missing values by:
+  - Quantifying NAs across variables
+  - Imputing numeric features (e.g., `bathrooms`, `beds`, 
+  `review_scores_rating`) using the median
+  - Dropping incomplete or unrealistic observations (e.g., zero bedrooms, zero reviews)
+- Converted percentage fields to decimals (e.g., `host_response_rate`)
+- Standardized categorical values (e.g., Boolean labels, validated zip codes)
+- Removed noisy levels (e.g., `bed_type`, rare `cancellation_policy` categories)
+***
+
+
+# Feature Engineering
+
+Simplify categorical variables:
+
+```{r}
+# Group less common levels of 'bed_type' into a single column called 'Other' 
+# (keep only the most frequently occurring type of bed)
+ny.df$bed_type <- fct_lump(ny.df$bed_type, 1)
+
+# Combine levels 'super_strict_30' & 'super_strict_60' from the variable 'cancellation_policy' 
+# & create new category 'super_strict'
+ny.df$cancellation_policy <- fct_other(ny.df$cancellation_policy, keep = c("flexible", "moderate", "strict"),
+                                       other_level = "super_strict")
+```
+
+
+Define new variable 'borough':
+```{r}
+# Import dataset for mapping zipcodes to boroughs
+borough_df <- read.csv("nyc_zip_borough_neighborhoods_pop.csv")
+
+# Inspect dataset
+str(borough_df)
+```
+**Note**: The dataset with information about the zipcode to borough mappings was downloaded/imported from the link below ...
+[Zipcode to NYC Borough Mappings Dataset](https://data.beta.nyc/dataset/pediacities-nyc-neighborhoods/resource/7caac650-d082-4aea-9f9b-3681d568e8a5)
+
+
+```{r}
+# Subset necessary variables
+borough_zip_df <- borough_df[, c("zip", "borough")]
+
+# Convert 'zip' to character type
+borough_zip_df$zip <- as.character(borough_zip_df$zip)
+
+# Merge new dataset with Airbnb dataframe based on 'zipcode' variable
+ny.df <- merge(ny.df, borough_zip_df, by.x = "zipcode", by.y = "zip", all.x = TRUE)
+
+# Replace missing 'borough' values with "Other"
+ny.df$borough[is.na(ny.df$borough)] <- "Other"
+
+# Drop 'zipcode' from dataset
+ny.df <- subset(ny.df, select = -c(zipcode))
+```
+
+**Note**: The 'zipcode' variable was dropped to avoid redundancy and potential confusion, as its numeric but categorical in nature. The location of a listing is better represented by variables like 'borough' and 'neighborhood'.
+
+
+Define new variables 'amenities_list' & 'amenities_count':
+```{r}
+# Define list of amenities & count of amenities for each listing
+ny.df <- ny.df %>%
+  mutate(amenities_list = strsplit(amenities, ",")) %>%
+  mutate(amenities_count = lengths(amenities_list))
+
+# Drop now redundant 'amenities_list' variable
+ny.df <- subset(ny.df, select = -c(amenities_list))
+```
+
+
+***
+### Summary of Feature Engineering
+- Mapped NYC zip codes to boroughs using an external dataset to enrich geographic analysis.  
+- Generated a new feature, amenities_count, by parsing the amenities list for each listing.  
+- Created a simplified property_group variable to reduce dimensionality and improve interpretability in visual and predictive models.
+***
+
+
+The following code is used to save an updated version of the prepared data.
+
+```{r}
+# Save to current working directory
+write.csv(ny.df, "new_train.csv", row.names = FALSE)
+```

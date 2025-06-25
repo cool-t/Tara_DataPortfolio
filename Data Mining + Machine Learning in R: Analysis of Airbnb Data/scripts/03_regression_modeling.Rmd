@@ -1,0 +1,268 @@
+---
+title: '**Data Mining Project: Analysis of Airbnb Rentals in NYC**'
+author: "Tara Cool"
+subtitle: "**Regression Modeling - Estimating Airbnb Listing Prices**"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+# Load required packages
+library(forecast)
+library(ggcorrplot)
+```
+
+```{r}
+# Read data into local environment
+ny.df <- read.csv("new_train.csv")
+```
+
+# Predictive Modeling - *Estimating Airbnb Rental Prices in NYC**
+
+
+The goal of this phase is to develop a **Multiple Linear Regression (MLR) model** to *predict the log-transformed prices* of Airbnb listings in New York City. This process involves careful variable selection, model refinement, and performance evaluation to uncover the key factors that influence pricing decisions on the platform.
+
+
+### a. Variable Selection/Dimension Reduction
+
+```{r}
+ny.df_reg <- subset(ny.df, select = -c(city, description, first_review, host_has_profile_pic, 
+                                       host_since, id, last_review, name, neighbourhood, property_type, 
+                                       thumbnail_url, beds, amenities))  
+```
+
+**Note**: The decisions to remove the aforementioned variables from the dataset are described in more detail below:
+* 'city': all observations in this subset of the original dataset contain only those observations where the value for the 'city' column is "NYC." 
+* 'zipcode' & 'neighbourhood': these variables are redundant in describing the location of a listing (e.g., 'latitude', 'longitude', & 'neighbourhood' are more detailed/precise variables). 
+* 'id', 'name', & 'description': the values for each of these variables are unique to each observation. 
+* 'property_type': this variable is now redundant, as we created a new variable for property types that minimizes the number of categories (i.e., grouped less common types into larger categories).
+* 'host_has_profile_pic': as 'summary()' function implies that in a majority of the rental listings, the host has a profile picture (e.g., 32,076 = True & 97 = False). 
+* 'first_review', 'last_review' & 'host_since': the relevance of these variables could be limited to assessing the recent performance and maintenance of a listing or the performance of the host, but might not directly affect the pricing decisions.
+* 'thumbnail_url': unlikely to influence the price of an Airbnb listing, as it is typically a web link to an image, and its inclusion in the model would not offer any meaningful insights into pricing. 
+* 'beds': this variable is redundant as we have the variables 'bedroom' & 'accommodates'.
+* 'amenities': this variable is redundant in describing the amenities of each Airbnb listing. A better way to quantify this in our model is through the use of the 'amenities_count' variable.
+
+
+```{r}
+# Partition the data into training (60%) & validation (40%) sets
+set.seed(1)
+
+# Sample 60% of the data, which we will assign to the training data set
+train.index <- sample(c(1:nrow(ny.df_reg)), nrow(ny.df_reg)*0.6)  
+
+# Assign 60% of the data that we just sampled to training set
+train.df <- ny.df_reg[train.index, ]  
+
+# Assign remaining 40% of the data to validation set
+valid.df <- ny.df_reg[-train.index, ] 
+```
+  
+
+
+Identify numeric & categorical predictor variables:
+```{r}
+# Subset numeric columns from training set while excluding 'log_price'
+num_predictors <- train.df[, !(names(train.df) %in% 'log_price') & sapply(train.df, is.numeric)]
+
+# Subset remaining (categorical) columns from training set while excluding 'log_price'
+cat_predictors <- train.df[, !(names(train.df) %in% c(names(num_predictors), 'log_price'))]
+```
+
+
+Check for multicollinearity issues:
+```{r}
+# Calculate the correlation matrix with numeric variables
+reg_cor_matrix <- cor(train.df[sapply(train.df, is.numeric)])
+
+# Visualize correlation matrix
+ggcorrplot(reg_cor_matrix, lab = TRUE, lab_size = 2.5, title = "Correlation Heatmap of NYC Airbnb\nRental Property Data") + theme(plot.title = element_text(size = 13), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9))
+```
+
+Multicollinearity occurs when the input variables are highly correlated, making it challenging to distinguish the unique contribution of each variable to the model and decreasing the reliability of the model output. It should be noted that there are 2 input variables which are strongly correlated with one another - including 'bedrooms' and 'accommodates'.
+
+Nonetheless, the criterion for selecting variables to drop in the revised model was based on both their correlation with the output variable 'log_price,' as well as their correlation with each other. Given that 'accommodates' has a stronger correlation to 'log_price' than 'bedrooms', it might be wise to keep the accommodates variable and drop the 'bedrooms' variable in an effort to avoid multicollinearity issues. This choice ensures that we retain the most influential variables while eliminating unnecessary redundancy in the input features, ultimately improving the model's performance and robustness. 
+
+
+***
+### Summary of Variable Selection
+To build a clean and interpretable model, several features are removed based on redundancy, irrelevance, or data quality concerns:  
+- Dropped variables included unique identifiers (‘id’, ‘name’, ‘description’), rarely informative or highly sparse features (‘host_has_profile_pic’, ‘thumbnail_url’, ‘first_review’, ‘last_review’), and highly correlated or redundant attributes (‘beds’, ‘bedrooms’, ‘amenities’, ‘neighbourhood’, etc.).
+- A new feature, ‘property_group’, was engineered to simplify property types into broader categories (so 'property_type' is removed).  
+- Multicollinearity was evaluated using a correlation matrix. Highly correlated predictors such as ‘bedrooms’ and ‘accommodates’ were analyzed, with ‘accommodates’ retained due to its stronger association with price.
+***
+
+
+### b. Model Training & Evaluation
+
+
+**Initial MLR Model**
+```{r}
+# Run MLR of 'log_price' on all the predictors in the training set
+
+# Note: all binary nominal categorical variables will automatically be converted into dummy variables with 'm-1' dummies
+
+mlr.model <- lm(log_price ~ ., data = train.df)
+options(digits = 3, scipen = 999)
+mlr_summary <- summary(mlr.model)
+mlr_summary
+```
+
+
+```{r}
+# Summary of residuals for initial MLR model (training set)
+summary(mlr.model$residuals)
+```
+
+
+```{r}
+# Assess accuracy of initial model against training set
+accuracy(mlr.model$fitted.values, train.df$log_price)
+```
+
+
+***
+### Recap of *Initial Model*
+The dataset was split into 60% training and 40% validation subsets to ensure unbiased model evaluation. The initial MLR model was built on the full set of cleaned predictors. The model achieved the following performance on the training set:
+
+| Metric    | Value |
+|-----------|-------|
+| RMSE      | 0.362 |
+| MAE       | 0.271 |
+| MAPE      | 5.91% |
+| Adj. R²   | 0.696 |
+
+This indicates that **~69.6%** of the variability in log-transformed Airbnb rental prices is explained by the model.
+
+***
+
+
+**Refined MLR Model**
+
+
+In an effort to improve the predictive accuracy of the model, we will further refine the model by eliminating predictor variables in which the resulting p-value is greater than 0.05 -- suggesting those specific predictor variables are not linearly related to the output variable of 'log_price' when controlling for other variables. As such, we will drop predictor variables such as 'bed_type', 'host_identity_verified', and 'host_response_rate' from the model in which the p-value is greater than 0.05. 
+
+We will also drop the 'bedrooms' variable that is strongly correlated with the 'accommodates' variable to evaluate the potential impact of multicollinearity on the model's predictive accuracy. However, we will keep some of the categorical variables whose categories or levels are significant (e.g., 'borough' & 'cancellation_policy').
+
+```{r}
+# Drop insignificant predictor variables
+train.df2 <- subset(train.df, select = -c(bed_type, host_response_rate, host_identity_verified, bedrooms))
+```
+
+
+```{r}
+# Refined MLR model
+mlr.model.2 <- lm(log_price ~ ., data = train.df2)
+summary(mlr.model.2)
+```
+
+
+```{r}
+# Assess accuracy of refined model against training set
+accuracy(mlr.model.2$fitted.values, train.df$log_price)
+```
+
+
+**Stepwise Regression**
+```{r}
+# Apply stepwise regression
+# drops predictors that lack statistical significance from the intial MLR model 
+# - in an effort to determine the best subset of predictor variables 
+mlr.model.step <- step(mlr.model, direction = "both")
+summary(mlr.model.step)
+```
+After running stepwise regression on the initial model, 'bed_type' was the only variable dropped from the model. 
+
+
+```{r}
+# Assess accuracy of initial model after applying stepwise regression 
+accuracy(mlr.model.step$fitted.values, train.df$log_price)
+```
+
+
+***
+### Recap of Model Refinement
+To streamline the model without compromising performance:
+
+- Predictors with **p-values > 0.05** (e.g., ‘bed_type’, ‘host_response_rate’, ‘host_identity_verified’, ‘bedrooms’) were dropped.
+    - A **refined model** was then built, improving interpretability while retaining most predictive power.
+- A third iteration using **stepwise regression** was also conducted, automatically selecting the most statistically significant subset of features.
+***
+
+
+### **Model Evaluation & Comparison**
+```{r}
+# Fitting MLR model to validation data & measuring model accuracy
+library (forecast)  # load 'forecast' package for predictions
+
+# Initial model
+mlr.pred <- predict(mlr.model, newdata= valid.df)
+accuracy(mlr.pred, valid.df$log_price)
+```
+
+
+```{r}
+# Refined model
+mlr.2.pred <- predict(mlr.model.2, newdata= valid.df)
+accuracy(mlr.2.pred, valid.df$log_price)
+```
+
+
+```{r}
+# Intial model + Stepwise regression
+mlr.step.pred <- predict(mlr.model.step, newdata= valid.df)
+accuracy(mlr.step.pred, valid.df$log_price)
+```
+
+
+```{r}
+all.residuals <- valid.df$log_price - mlr.step.pred
+hist(all.residuals, breaks = 25, xlab = "Residuals", main = " ")
+```
+Based on the histogram of residual errors when the model is fit to the validation data, one can conclude that most errors are between -1 and 1 (i.e., error magnitude). This indicates low error variance and a well-behaved residual distribution.
+
+
+***
+### Recap of Regression Modeling
+Three model versions were tested on the validation set:
+
+| Model                        | RMSE  | MAE   | MAPE  |
+|-----------------------------|-------|-------|--------|
+| Initial MLR                 | 0.362 | 0.274 | 5.98%  |
+| Refined MLR (fewer vars)    | 0.365 | 0.276 | 6.04%  |
+| Stepwise Regression Model   | 0.362 | 0.274 | 5.99%  |
+
+#### Key Findings:
+- The initial model, despite including both ‘bedrooms’ and ‘accommodates’, delivered the best balance of fit and interpretability.
+- **Model fit**: Adjusted R² of 0.696 indicates strong explanatory power for log-transformed prices.
+    - The inital model had a slightly higher adjusted R-squared value, indicating that it explains a bit more of the variance in 'log_price' compared to the refined model.
+- **Predictive performance**: RMSE of ~0.362 suggests reasonably low error in predictions, even on unseen data.
+    - RMSE for the initial model is slightly lower, which means it has slightly better predictive accuracy in terms of the error between predicted and actual 'log_price' values.
+- **Interpretable results**: Most significant variables are intuitive and aligned with market behavior, offering practical utility.
+
+#### Business Insights & Implications
+This model offers actionable insights for hosts, guests, and Airbnb itself:
+- Accommodation capacity (‘accommodates’) and location (‘borough’) are strong predictors of price.
+- Host responsiveness, property type, and cancellation policy also influence pricing strategies.
+- The model's generalizability (consistent RMSE across train and validation sets) supports its application to future price-setting or valuation tools.
+
+***
+
+#### Conclusion 
+The multiple linear regression model built in this phase provides a reliable, interpretable, and data-driven approach to understanding Airbnb rental pricing in NYC. By identifying the features that matter most—like guest capacity, location, and the number of available amenities, this model empowers:
+
+***
+
+- Hosts to competitively price listings  
+- Guests to evaluate value for money  
+- Airbnb to enhance platform pricing algorithms
+
+The model explains a substantial portion of the price variability, but further research could explore additional factors to enhance predictive accuracy (e.g., seasonality, user review sentiment, or calendar availability).
+
+
+The following code is used to save an updated version of the prepared data to the current working directory.
+
+```{r}
+# Save to current working directory
+write.csv(ny.df, "new_train.csv", row.names = FALSE)
+```

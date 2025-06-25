@@ -1,0 +1,241 @@
+---
+title: "**Data Mining Project: Analysis of Airbnb Rentals in NYC**"
+subtitle: "**Exploratory Data Analysis**"
+author: "Tara Cool"
+output: html_notebook
+---
+
+```{r}
+# Load required packages
+library(ggplot2)
+library(ggcorrplot)
+```
+
+```{r}
+# Read prepared data into local environment
+ny.df <- read.csv("new_train.csv")
+```
+
+# Exploratory Data Analysis
+
+
+## a. Summary Statistics
+
+```{r}
+# Drop NA values for categorical variables that were not imputed
+ny.df <- na.omit(ny.df)
+```
+
+
+Identify numeric & categorical variables:
+```{r}
+# Subset numeric columns
+num_var <- ny.df[, sapply(ny.df, is.numeric)]
+
+# Subset remaining (categorical) columns
+cat_var <- ny.df[, !(names(ny.df) %in% names(num_var))]
+```
+
+
+```{r}
+# Drop unique identifier columns from subsets
+num_var <- subset(num_var, select = -c(id))
+cat_var <- subset(cat_var, select = -c(description, name, thumbnail_url))
+```
+
+```{r}
+# Get summary stats for numerical variables
+summary(num_var)
+```
+
+
+```{r}
+# Standard deviation of each variable to better understand its overall distribution
+options(scipen = 999)
+col.sd <- apply(num_var, 2, sd)
+col.sd  # print 'sd' object (vector of sd values for each column)
+```
+
+
+```{r}
+# Interquartile range for numerical variables
+col.iqr <- apply(num_var, 2, IQR)
+col.iqr
+```
+
+
+```{r}
+# Variance of numerical variables
+col.var <- apply(num_var, 2, var)
+col.var
+```
+
+
+```{r}
+# Create correlation matrix
+corr <- round(cor(num_var), 2)
+corr
+```
+
+
+```{r}
+# Summarize ordinal categorical variables 
+
+# generate the total number of observations belonging to each level
+ordinal.cat.sum <- table(cat_var$cancellation_policy)
+ordinal.cat.sum
+```
+
+
+```{r}
+# Summarize nominal/binary nominal categorical variables 
+
+# generate the total number of observations belonging to each class
+nominal.cat.sum <- apply(subset(cat_var, select = - c(cancellation_policy, first_review, last_review, host_since, 
+                                                      amenities)), 2, table)
+nominal.cat.sum
+```
+
+**Note**: Some of the variables were removed here. For example, 'cancellation_policy' was excluded as it is an ordinal variable. Other variables such as 'first_review' and 'host_since' were removed due to the number of unique date values given for each of these variables. 
+
+
+***
+### Recap of Summary Statistics
+Conducted statistical profiling for all numeric and categorical features:  
+- Examined means, medians, variances, standard deviations, and IQRs to  understand distribution and skew.   
+- Created a correlation matrix to identify relationships between features (e.g., strong positive correlation between accommodates, beds, and log_price).
+
+These metrics provide valuable insight into Airbnb's market structure, guiding modeling choices and stakeholder recommendations.
+***
+
+
+Let's delve deeper into how this information can be used by both Airbnb users and management:
+
+**1. Pricing Insights:**
+
+  - *Average and Standard Deviation of Price*: By analyzing the average and standard deviation of prices, Airbnb users can get a sense of the typical price range for listings in New York City. Additionally, breaking down these statistics by room type (e.g., entire home, private room, shared room) allows users to understand which types of accommodations are more budget-friendly or luxurious.
+
+**2. Accommodation Preferences:**
+
+  - *Median Number of Bedrooms*: For travelers looking for more space, knowing the median number of bedrooms can help them identify listings that meet their requirements. On the management side, this information can guide property investments and renovations, ensuring that accommodations match market demand.
+
+**3. Correlation Insights:**
+
+  - *Positive Correlations*: Understanding strong positive correlations, such as between 'log_price' and 'accommodates,' can be valuable for Airbnb users. It suggests that as the number of people a property accommodates increases, so does the price. This information helps users make informed decisions when selecting properties based on their group size.
+  - *Variable Reduction*: For Airbnb management, identifying correlated variables can aid in variable reduction for predictive modeling. By eliminating highly correlated predictors, they can build more efficient and interpretable models.
+
+**4. Categorical Variables:**
+
+  - *Categorization of Listings*: The summary of categorical variables, like 'property_type,' 'room_type,' and 'neighborhood,' provides insights into the diversity of Airbnb listings in NYC. This information helps users narrow down their choices based on their preferences and requirements.
+  - *Host Verification*: Airbnb management can use the summary of 'host_identity_verified' to evaluate the trustworthiness of hosts, which can be a crucial factor in attracting guests.
+
+**5. Decision Support for Airbnb Management:**
+
+  - *Pricing Strategy*: Management can adjust pricing strategies based on the average price and standard deviation of prices. For example, they can offer promotional rates during low-demand seasons to attract more bookings.
+  - *Property Investment*: Data on the median number of bedrooms can inform property investment decisions. If there's a high demand for larger accommodations, management may consider acquiring or developing properties with more bedrooms.
+  - *Marketing and Targeting*: Understanding the popularity of room types or neighborhoods can help in marketing efforts. Management can target specific demographics or interests to increase occupancy rates in certain areas.
+
+In summary, these summary statistics go beyond mere data description; they empower Airbnb users to make informed booking decisions and offer valuable insights for management to optimize their property listings and pricing strategies. These insights can ultimately lead to improved guest experiences and increased revenue for hosts and Airbnb itself.
+
+***
+
+
+## b. Data Visualization
+
+
+**Faceted Bar Chart**
+```{r}
+ggplot(ny.df, aes(x= room_type, fill = room_type)) + geom_bar(color = "black", alpha = 0.7) + 
+labs(title = "Airbnb Rental Room Types in NYC by Cleaning Fee Policy", x = NULL, y = "# of Airbnb Rental Listings") + 
+theme(axis.title = element_text(size = 12), legend.position = "bottom") + scale_x_discrete(labels = NULL) + 
+facet_wrap(~cleaning_fee, 
+           labeller = labeller(cleaning_fee = c(
+               "True" = "With Cleaning Fee", "False" = "Without Cleaning Fee"))) + 
+scale_fill_discrete(name = "Room Type") 
+```
+Our first visualization is a faceted bar chart that meticulously dissects Airbnb rental room types in NYC based on their cleaning fee policies. By segmenting the data in this manner, we reveal valuable insights that can help both hosts and guests. For Airbnb management, this information can aid in setting competitive pricing strategies and policies for different room types. Guests can benefit from this knowledge by making more informed decisions about accommodation based on their preferences and budget. This plot uncovers that cleaning fees are prevalent, especially for 'entire home/apartment' listings. Such insights can guide both hosts and guests in negotiations and bookings.
+
+
+**Histogram**
+```{r}
+ggplot(ny.df, aes(x= accommodates)) + geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) + 
+labs(title = "Distribution of Accommodation Capacity in NYC Airbnb Rentals", 
+     x = "Number of Accomodated Guests", y= "# of Airbnb Rental Listings") + theme_minimal() + 
+theme(axis.text = element_text(size = 11), axis.title = element_text(size = 12)) 
+```
+The second visualization, a histogram showcasing accommodation capacity distribution, lays bare the preferences of Airbnb renters in New York City. For hosts, this is a goldmine of information, allowing them to tailor their listings to the most sought-after capacities, thereby optimizing occupancy rates and revenue. For guests, this histogram is a powerful tool for finding the perfect match based on group size. It shows that most listings can comfortably host around 2 guests, but it also highlights the availability of properties for larger groups. This revelation aids in decision-making for both hosts and guests.
+
+
+**Heat Map/Correlation Matrix**
+```{r}
+ggcorrplot(corr, lab = TRUE, lab_size = 2, title = "Correlation Heatmap of NYC\nAirbnb Rental Property Data") + theme(plot.title = element_text(size = 13), axis.text.x = element_text(size = 9), axis.text.y = element_text(size = 9))
+```
+Our third visualization, the correlation heatmap, delivers a deeper understanding of how various numerical variables relate to one another. For decision-makers in the Airbnb ecosystem, this plot offers predictive potential. Strong correlations between 'beds,' 'bedrooms,' and 'accommodates' with 'log_price' can be valuable for pricing optimization. Meanwhile, the negative correlation between latitude and 'log_price' suggests that location significantly influences rental prices. Hosts can set competitive prices, and guests can better assess property values based on this knowledge.
+
+
+**Proportional Bar Chart**
+```{r}
+# Define new variable 'property_group' that groups property types
+# (Goal = limit num. of levels)
+ny.df$property_group <- ifelse(ny.df$property_type %in% c("Guesthouse", "Guest suite", "In-law"), 
+                               "Guest suite/In-law", ifelse(ny.df$property_type %in% c(
+                                   "Boutique hotel", "Dorm", "Hostel", "Serviced apartment", "Timeshare"), 
+                                                            "Accommodation", ifelse(ny.df$property_type %in% c(
+                                                                "Boat", "Bungalow", "Cabin", "Castle", "Chalet", 
+                                                                "Earth House", "Tent", "Vacation home", "Villa", 
+                                                                "Yurt"), "Specialty", as.character(
+                                                                ny.df$property_type))))
+```
+
+
+```{r}
+# Create Stacked Bar Chart
+ggplot(ny.df, aes(x= accommodates, fill = property_group)) + 
+geom_bar(position = "fill", color = "black", alpha = 0.7) + 
+labs(title = "Proportion of Airbnb Listings in NYC by Accommodation\nCapacity & Property Type", 
+     x = "Accommodation Capacity", y = "Proportion of Airbnb Listings") + 
+scale_fill_discrete(name = "Property Type") + theme_minimal() +  
+theme(axis.text = element_text(size = 10), axis.title = element_text(size = 11))
+```
+The fourth visualization, a stacked bar chart, guides Airbnb management and users in understanding the distribution of property types and their capacity. This chart is an invaluable resource for hosts to fine-tune their listings based on property type and group size. Apartments emerge as the dominant choice, particularly for smaller parties. Houses, on the other hand, become more appealing for larger groups. Airbnb users can capitalize on this knowledge to make well-informed booking decisions.
+
+
+**Histogram #2**
+```{r}
+ggplot(ny.df, aes(x= log_price)) + geom_histogram(binwidth = 1, fill = "orange", color = "black", alpha = 0.7) + labs(title = "Distribution of Log Prices for NYC Airbnb Rentals", x = "Log Price ($)", y= "# of Airbnb Rental Listings") + theme_minimal() + theme(axis.text = element_text(size = 11), axis.title = element_text(size = 12)) 
+```
+Our fifth visualization is another histogram, this time focusing on the distribution of log-transformed prices. This transformed scale can unveil hidden pricing trends or clusters that are not immediately apparent. For both hosts and guests, this histogram offers deeper insights into the nuanced price dynamics of Airbnb rentals in NYC.
+
+
+**Scatterplot**
+```{r}
+ggplot(ny.df, aes(x= bedrooms, y= log_price, color = room_type, size = accommodates)) + 
+geom_point(na.rm= TRUE, alpha = 0.7) + xlim(1, 8) + 
+labs(title= "Number of Bedrooms vs. Log Price for NYC Airbnb Rentals, by Room Type & Accommodation Capacity", 
+     x= "# of Bedrooms", y= "Log Price ($)") + scale_color_discrete(name = "Room Type") + 
+scale_size_continuous(name = "Accommodation Capacity") + theme_minimal() + 
+theme(axis.text = element_text(size = 11), axis.title = element_text(size = 12), 
+      legend.text = element_text(size = 10))                                                     
+```
+Lastly, our sixth plot, a scatterplot, delves into the intricate relationship between several variables: number of bedrooms, log-transformed prices, room types, and accommodation capacity. This visualization empowers both hosts and guests to decipher how these factors interact and influence rental prices. Notably, it sheds light on the price variations tied to room type and capacity, offering actionable insights for optimizing pricing strategies and booking decisions.
+
+Together, these insightful visualizations equip Airbnb stakeholders with a wealth of information, enabling them to make data-driven decisions that enhance the Airbnb experience in New York City. Whether you're a host seeking to maximize revenue or a guest in pursuit of the perfect stay, these visualizations are your compass in navigating the NYC Airbnb landscape.
+
+
+***
+### Recap of Data Visualization
+- **Faceted Bar Chart**: Shows the distribution of room types based on cleaning fee policies. Entire home/apartment listings are far more likely to charge a cleaning fee—insightful for pricing strategies and user budgeting.
+- **Histogram – ‘Accommodates’**: Reveals that most listings host 2 guests, suggesting a strong market for couples and solo travelers, with some availability for larger groups.
+- **Correlation Heatmap**: Highlights strong correlations among ‘bedrooms’, ‘beds’, ‘accommodates’, and ‘log_price’. Negative correlation between ‘log_price’ and ‘longitude’ suggests pricing shifts by location.
+- **Proportional Bar Chart – Property Type by Capacity**: Indicates that apartments dominate for small groups, while houses and specialty listings become more common for larger guest counts.
+- **Histogram – ‘Log Price’**: Helps normalize the price distribution and exposes multi-modal pricing behavior.
+- **Scatterplot – ‘Bedrooms’ vs. ‘Price’**: Visualizes how ‘log_price’ varies with bedrooms, room type, and guest capacity—revealing meaningful price tiering by listing type and size.
+***
+
+
+The following code is used to save an updated version of the prepared data to the current working directory.
+
+```{r}
+# Save to current working directory
+write.csv(ny.df, "new_train.csv", row.names = FALSE)
+```
