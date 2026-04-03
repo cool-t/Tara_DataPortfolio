@@ -4,7 +4,7 @@ I’m Tara Cool, a Data Analyst with an M.S. in Applied Business Analytics from 
 
 This portfolio showcases a mix of projects across data analysis, machine learning, SQL, and Python. My work includes end-to-end analytics projects, from data cleaning and exploration to modeling, visualization, and business recommendations. I also include hands-on coding projects focused on SQL querying, data transformation, and Python-based analysis and automation.
 
-## Core Skills 
+### Core Skills 
 
 - **Programming**: Python, R, SQL
 - **Data Visualization**: Tableau, Power BI, Excel
