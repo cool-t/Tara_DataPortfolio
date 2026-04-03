@@ -1,4 +1,4 @@
-# Welcome to my Data Analytics Portfolio.
+# Welcome to my Data Analytics Portfolio
 
 ### I’m Tara Cool, a Data Analyst with an M.S. in Applied Business Analytics from Boston University. My work focuses on transforming complex data into clear, actionable insights that support business strategy and decision-making.
 
