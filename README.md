@@ -6,10 +6,10 @@ This portfolio includes a range of projects where I apply data analysis, machine
 
 ## Core Tools and Skills
 
-**Programming**: Python, R, SQL
-**Data Visualization**: Tableau, Power BI, Excel
-**Analytics and Methods**: Machine Learning, Predictive Modeling, Statistical Analysis, Data Cleaning
-**Business Focus**: KPI tracking, customer segmentation, forecasting, A/B testing
+- **Programming**: Python, R, SQL
+- **Data Visualization**: Tableau, Power BI, Excel
+- **Analytics and Methods**: Machine Learning, Predictive Modeling, Statistical Analysis, Data Cleaning
+- **Business Focus**: KPI tracking, customer segmentation, forecasting, A/B testing
 
 ## What You’ll Find in This Portfolio
 
