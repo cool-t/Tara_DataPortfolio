@@ -8,7 +8,7 @@ This portfolio includes a range of projects where I apply data analysis, machine
 
 - **Programming**: Python, R, SQL
 - **Data Visualization**: Tableau, Power BI, Excel
-- **Analytics and Methods**: Predictive Modeling, Machine Learning, Statistical Analysis, Data Cleaning, Business Intelligence, Dashboard Development 
+- **Analytics and Methods**: Predictive Modeling, Machine Learning, Statistical Analysis, Business Intelligence, Data Cleaning, Data Exploration, Dashboard Development 
 
 ## What You’ll Find in This Portfolio
 
