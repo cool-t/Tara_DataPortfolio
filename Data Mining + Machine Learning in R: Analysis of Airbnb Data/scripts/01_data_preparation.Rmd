@@ -1,6 +1,6 @@
 ---
 title: "**Data Mining Project: Analysis of Airbnb Rentals in NYC**"
-author: "Tara Cool"
+author: "Tara Cool" 
 subtitle: "**Data Preparation**"
 output: html_document
 ---
